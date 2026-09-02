@@ -10,6 +10,7 @@ use crate::db::Database;
 use crate::models::{
     AppSnapshot, NativeAsset, NativeSettings, PeriodReport, ResurfaceCandidate, ScanSummary,
 };
+use crate::platform;
 use crate::scanner::discover_default_source;
 use crate::services::{self, RuntimeServices};
 
@@ -107,6 +108,7 @@ pub fn save_native_settings(
         .database
         .save_settings(&settings)
         .map_err(display_error)?;
+    platform::sync_launch_at_login(settings.launch_at_login).map_err(display_error)?;
     services::configure_watcher(app, state.inner().clone()).map_err(display_error)
 }
 

@@ -2,6 +2,7 @@ mod analysis;
 mod commands;
 mod db;
 mod models;
+mod platform;
 mod scanner;
 mod services;
 
@@ -61,6 +62,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_dir = app.path().app_local_data_dir()?;
             let database = db::Database::new(data_dir.join("ss-tariff.db"));
@@ -74,6 +77,10 @@ pub fn run() {
             setup_tray(app)?;
             let state = app.state::<commands::AppState>().inner().clone();
             services::start(app.handle().clone(), state)?;
+            #[cfg(desktop)]
+            if !std::env::args().any(|argument| argument == "--hidden") {
+                show_main_window(app.handle());
+            }
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

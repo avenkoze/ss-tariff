@@ -78,6 +78,7 @@ import {
   getCleanupScore,
   searchItems,
 } from './lib/search';
+import { checkForUpdate, installUpdate, type Update } from './lib/updater';
 import {
   CATEGORY_META,
   type Category,
@@ -236,6 +237,8 @@ function App() {
   const [libraryLoading, setLibraryLoading] = useState(NATIVE_RUNTIME);
   const [scanning, setScanning] = useState(false);
   const [galleryLimit, setGalleryLimit] = useState(120);
+  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -266,6 +269,14 @@ function App() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!NATIVE_RUNTIME) return undefined;
+    const timer = window.setTimeout(() => {
+      checkForUpdate().then(setAvailableUpdate).catch(() => undefined);
+    }, 5000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -500,6 +511,17 @@ function App() {
     setNativeResurface((current) => current.filter((candidate) => candidate.item.id !== item.id));
     setSelectedItem(null);
     setToast({ message: 'Bu kayıt yakın zamanda yeniden gösterilmeyecek.' });
+  }
+
+  async function applyAvailableUpdate() {
+    if (!availableUpdate || updateInstalling) return;
+    setUpdateInstalling(true);
+    try {
+      await installUpdate(availableUpdate);
+    } catch (error) {
+      setUpdateInstalling(false);
+      setToast({ message: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   function openArchivePick(item: ScreenshotItem) {
@@ -926,6 +948,7 @@ function App() {
                   <button className="secondary-button" type="button" onClick={() => void chooseNativeFolder()}><FolderOpen size={16} /> Değiştir</button>
                 </div>
                 <label className="setting-row"><span><strong>Başlangıçta tara</strong><small>Uygulama açıldığında değişen dosyaları bulur.</small></span><input type="checkbox" checked={settingsDraft.scanOnStartup} onChange={(event) => setSettingsDraft({ ...settingsDraft, scanOnStartup: event.target.checked })} /></label>
+                <label className="setting-row"><span><strong>Windows ile başlat</strong><small>Sessizce sistem tepsisinde hazır olur.</small></span><input type="checkbox" checked={settingsDraft.launchAtLogin} onChange={(event) => setSettingsDraft({ ...settingsDraft, launchAtLogin: event.target.checked })} /></label>
                 <label className="setting-row"><span><strong>Klasörü izle</strong><small>Yeni screenshot geldiğinde otomatik düzenler.</small></span><input type="checkbox" checked={settingsDraft.watchFolder} onChange={(event) => setSettingsDraft({ ...settingsDraft, watchFolder: event.target.checked })} /></label>
                 <label className="setting-row"><span><strong>Bildirimler</strong><small>Arka planda yeni kayıt işlendiğinde haber verir.</small></span><input type="checkbox" checked={settingsDraft.notificationsEnabled} onChange={(event) => setSettingsDraft({ ...settingsDraft, notificationsEnabled: event.target.checked })} /></label>
                 <div className="schedule-setting">
@@ -974,6 +997,7 @@ function App() {
 
       <input ref={fileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={handleFileInput} />
 
+      {availableUpdate && <div className="update-toast" role="status"><Download size={17} /><span>v{availableUpdate.version} hazır</span><button type="button" disabled={updateInstalling} onClick={() => void applyAvailableUpdate()}>{updateInstalling ? 'Kuruluyor' : 'Güncelle'}</button><IconButton label="Güncellemeyi kapat" onClick={() => setAvailableUpdate(null)}><X size={15} /></IconButton></div>}
       {toast && <div className="toast" role="status"><Check size={17} /><span>{toast.message}</span>{toast.undoId && <button type="button" onClick={() => void undoTrash(toast.undoId!)}><RotateCcw size={14} /> Geri al</button>}</div>}
     </div>
   );

@@ -31,6 +31,7 @@ export interface NativeSettings {
   notificationsEnabled: boolean;
   scheduleTimes: string[];
   lastScanAt?: string;
+  launchAtLogin: boolean;
 }
 
 interface NativeAssetDto extends Omit<ScreenshotItem, 'analyzer' | 'category' | 'status' | 'junkSignals'> {

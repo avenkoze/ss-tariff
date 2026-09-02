@@ -87,6 +87,7 @@ pub struct ScanSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct NativeSettings {
     pub source_folder: Option<String>,
     pub scan_on_startup: bool,
@@ -94,6 +95,7 @@ pub struct NativeSettings {
     pub notifications_enabled: bool,
     pub schedule_times: Vec<String>,
     pub last_scan_at: Option<String>,
+    pub launch_at_login: bool,
 }
 
 impl Default for NativeSettings {
@@ -105,6 +107,7 @@ impl Default for NativeSettings {
             notifications_enabled: true,
             schedule_times: vec!["12:00".into(), "20:00".into()],
             last_scan_at: None,
+            launch_at_login: false,
         }
     }
 }

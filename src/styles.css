@@ -2320,6 +2320,40 @@ a {
   cursor: pointer;
 }
 
+.update-toast {
+  position: fixed;
+  z-index: 101;
+  right: 24px;
+  bottom: 78px;
+  display: flex;
+  min-height: 46px;
+  max-width: min(430px, calc(100vw - 48px));
+  align-items: center;
+  gap: 10px;
+  border: 2px solid var(--line);
+  padding: 0 8px 0 13px;
+  background: #121115;
+  color: var(--ink);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+
+.update-toast > svg {
+  color: #b99cff;
+}
+
+.update-toast > button:not(.icon-button) {
+  margin-left: auto;
+  border: 0;
+  border-bottom: 1px solid #9b75ee;
+  padding: 3px 0;
+  background: transparent;
+  color: #d7c8f7;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .mobile-nav,
 .sidebar-scrim {
   display: none;
@@ -2674,6 +2708,12 @@ button:disabled {
   .toast {
     right: 12px;
     bottom: 74px;
+    max-width: calc(100vw - 24px);
+  }
+
+  .update-toast {
+    right: 12px;
+    bottom: 128px;
     max-width: calc(100vw - 24px);
   }
 
