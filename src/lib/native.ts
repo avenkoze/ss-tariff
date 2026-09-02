@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Category, ItemStatus, JunkSignal, ScreenshotItem } from '../types';
+import type { AppearanceSettings } from './appearance';
 
 const CATEGORIES = new Set<Category>([
   'shopping',
@@ -32,6 +33,12 @@ export interface NativeSettings {
   scheduleTimes: string[];
   lastScanAt?: string;
   launchAtLogin: boolean;
+  appearance: AppearanceSettings;
+}
+
+export interface PreparedBackground {
+  path: string;
+  luminance: number;
 }
 
 interface NativeAssetDto extends Omit<ScreenshotItem, 'analyzer' | 'category' | 'status' | 'junkSignals'> {
@@ -107,6 +114,10 @@ export function isNativeRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+export function getNativeFileUrl(path: string): string {
+  return convertFileSrc(path);
+}
+
 export function mapNativeAsset(asset: NativeAssetDto): ScreenshotItem {
   const category = CATEGORIES.has(asset.category as Category)
     ? (asset.category as Category)
@@ -149,6 +160,17 @@ export function cancelNativeScan(): Promise<void> {
 
 export function saveNativeSettings(settings: NativeSettings): Promise<void> {
   return invoke('save_native_settings', { settings });
+}
+
+export async function selectCustomBackground(): Promise<PreparedBackground | undefined> {
+  const sourcePath = await open({
+    directory: false,
+    multiple: false,
+    title: 'Arka plan seç',
+    filters: [{ name: 'Görseller', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+  });
+  if (typeof sourcePath !== 'string') return undefined;
+  return invoke<PreparedBackground>('prepare_custom_background', { sourcePath });
 }
 
 export function updateNativeStatus(id: string, status: ItemStatus): Promise<void> {

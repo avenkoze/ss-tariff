@@ -96,6 +96,7 @@ pub struct NativeSettings {
     pub schedule_times: Vec<String>,
     pub last_scan_at: Option<String>,
     pub launch_at_login: bool,
+    pub appearance: AppearanceSettings,
 }
 
 impl Default for NativeSettings {
@@ -108,8 +109,41 @@ impl Default for NativeSettings {
             schedule_times: vec!["12:00".into(), "20:00".into()],
             last_scan_at: None,
             launch_at_login: false,
+            appearance: AppearanceSettings::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct AppearanceSettings {
+    pub background_mode: String,
+    pub background_id: String,
+    pub custom_background_path: Option<String>,
+    pub custom_background_luminance: Option<f64>,
+    pub solid_color: String,
+    pub shuffle_backgrounds: bool,
+}
+
+impl Default for AppearanceSettings {
+    fn default() -> Self {
+        Self {
+            background_mode: "curated".into(),
+            background_id: "verdant-glasshouse".into(),
+            custom_background_path: None,
+            custom_background_luminance: None,
+            solid_color: "#151918".into(),
+            shuffle_backgrounds: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedBackground {
+    pub path: String,
+    pub luminance: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]

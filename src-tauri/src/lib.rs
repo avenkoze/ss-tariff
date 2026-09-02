@@ -1,4 +1,5 @@
 mod analysis;
+mod appearance;
 mod commands;
 mod db;
 mod intelligence;
@@ -75,6 +76,7 @@ pub fn run() {
             app.manage(commands::AppState {
                 database,
                 thumbnail_dir: data_dir.join("thumbnails"),
+                appearance_dir: data_dir.join("appearance"),
                 services: std::sync::Arc::new(services::RuntimeServices::default()),
             });
             #[cfg(desktop)]
@@ -99,6 +101,7 @@ pub fn run() {
             commands::scan_configured_folder,
             commands::scan_selected_folder,
             commands::save_native_settings,
+            commands::prepare_custom_background,
             commands::update_native_status,
             commands::cancel_native_scan,
             commands::update_native_category,

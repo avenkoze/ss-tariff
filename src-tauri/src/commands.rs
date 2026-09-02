@@ -6,9 +6,11 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use crate::analysis::{cosine_similarity, embed_text};
+use crate::appearance;
 use crate::db::Database;
 use crate::models::{
-    AppSnapshot, NativeAsset, NativeSettings, PeriodReport, ResurfaceCandidate, ScanSummary,
+    AppSnapshot, NativeAsset, NativeSettings, PeriodReport, PreparedBackground,
+    ResurfaceCandidate, ScanSummary,
 };
 use crate::platform;
 use crate::scanner::discover_default_source;
@@ -18,6 +20,7 @@ use crate::services::{self, RuntimeServices};
 pub struct AppState {
     pub database: Database,
     pub thumbnail_dir: PathBuf,
+    pub appearance_dir: PathBuf,
     pub services: Arc<RuntimeServices>,
 }
 
@@ -135,6 +138,15 @@ pub fn save_native_settings(
         .map_err(display_error)?;
     platform::sync_launch_at_login(settings.launch_at_login).map_err(display_error)?;
     services::configure_watcher(app, state.inner().clone()).map_err(display_error)
+}
+
+#[tauri::command]
+pub fn prepare_custom_background(
+    state: State<'_, AppState>,
+    source_path: String,
+) -> Result<PreparedBackground, String> {
+    appearance::prepare_custom_background(&PathBuf::from(source_path), &state.appearance_dir)
+        .map_err(display_error)
 }
 
 #[tauri::command]
