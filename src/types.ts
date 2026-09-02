@@ -62,9 +62,13 @@ export interface ScreenshotItem {
   junkSignals?: JunkSignal[];
   duplicateGroup?: string;
   status: ItemStatus;
-  analyzer: 'demo' | 'local-vision' | 'browser-ocr';
+  analyzer: 'demo' | 'local-vision' | 'browser-ocr' | 'native-private-ai';
   blob?: Blob;
   blobUrl?: string;
+  native?: boolean;
+  sourceId?: string;
+  sourceUri?: string;
+  thumbnailPath?: string;
   preview?: PreviewData;
   analysisVersion?: number;
   lastAnalyzedAt?: string;

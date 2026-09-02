@@ -2463,6 +2463,21 @@ a {
   font-weight: 560;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1180px) {
   .library-grid {
     grid-template-columns: repeat(5, minmax(115px, 1fr));

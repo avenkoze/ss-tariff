@@ -50,6 +50,17 @@ import { DEMO_ITEMS } from './data/demo';
 import { ANALYSIS_VERSION, analyzeFile, findSimilarGroup } from './lib/analyzer';
 import { clearLocalItems, deleteLocalItem, loadLocalItems, saveLocalItem } from './lib/database';
 import {
+  getNativeSnapshot,
+  isNativeRuntime,
+  moveNativeToSystemTrash,
+  recordNativeResurface,
+  scanNativeLibrary,
+  searchNativeLibrary,
+  selectAndScanFolder,
+  updateNativeStatus,
+  type NativeSettings,
+} from './lib/native';
+import {
   formatBytes,
   formatRelativeDate,
   getCleanupReason,
@@ -75,6 +86,8 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Images }> = [
   { id: 'recent', label: 'Recent', icon: Clock3 },
   { id: 'library', label: 'Gallery', icon: Images },
 ];
+
+const NATIVE_RUNTIME = isNativeRuntime();
 
 const CATEGORY_ICONS: Record<Category, typeof Images> = {
   shopping: ShoppingBag,
@@ -188,7 +201,7 @@ function GalleryCategory({
 
 function App() {
   const [view, setView] = useState<ViewId>('recent');
-  const [items, setItems] = useState<ScreenshotItem[]>(DEMO_ITEMS);
+  const [items, setItems] = useState<ScreenshotItem[]>(NATIVE_RUNTIME ? [] : DEMO_ITEMS);
   const [category, setCategory] = useState<Category | 'all'>('all');
   const [query, setQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<ScreenshotItem | null>(null);
@@ -201,19 +214,59 @@ function App() {
   const [refreshSalt, setRefreshSalt] = useState(0);
   const [lastRefreshAt, setLastRefreshAt] = useState(() => new Date());
   const [surfaceHistory, setSurfaceHistory] = useState<SurfaceHistory>(loadSurfaceHistory);
+  const [nativeSettings, setNativeSettings] = useState<NativeSettings | null>(null);
+  const [nativeSearchItems, setNativeSearchItems] = useState<ScreenshotItem[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(NATIVE_RUNTIME);
+  const [scanning, setScanning] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
-    loadLocalItems()
-      .then((localItems) => {
-        if (active && localItems.length > 0) setItems((current) => [...localItems, ...current]);
-      })
-      .catch(() => undefined);
+    if (NATIVE_RUNTIME) {
+      getNativeSnapshot()
+        .then((snapshot) => {
+          if (!active) return;
+          setItems(snapshot.assets);
+          setNativeSettings(snapshot.settings);
+        })
+        .catch((error) => {
+          if (active) setToast({ message: error instanceof Error ? error.message : String(error) });
+        })
+        .finally(() => {
+          if (active) setLibraryLoading(false);
+        });
+    } else {
+      loadLocalItems()
+        .then((localItems) => {
+          if (active && localItems.length > 0) setItems((current) => [...localItems, ...current]);
+        })
+        .catch(() => undefined);
+    }
     return () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!NATIVE_RUNTIME || !query.trim()) {
+      setNativeSearchItems([]);
+      return undefined;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      searchNativeLibrary(query)
+        .then((results) => {
+          if (active) setNativeSearchItems(results.filter((item) => item.status !== 'trash'));
+        })
+        .catch(() => {
+          if (active) setNativeSearchItems([]);
+        });
+    }, 180);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -234,11 +287,14 @@ function App() {
     [activeItems],
   );
   const visibleItems = useMemo(
-    () =>
-      searchItems(activeItems, query, category).sort(
+    () => {
+      const source = NATIVE_RUNTIME && query.trim() ? nativeSearchItems : activeItems;
+      const textQuery = NATIVE_RUNTIME && query.trim() ? '' : query;
+      return searchItems(source, textQuery, category).sort(
         (first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime(),
-      ),
-    [activeItems, query, category],
+      );
+    },
+    [activeItems, nativeSearchItems, query, category],
   );
   const cleanupQueue = useMemo(
     () => {
@@ -276,10 +332,48 @@ function App() {
     [activeItems, lastRefreshAt, recentItems, refreshSalt, surfaceHistory],
   );
 
-  function refreshLibrary() {
+  async function reloadNativeLibrary() {
+    const snapshot = await getNativeSnapshot();
+    setItems(snapshot.assets);
+    setNativeSettings(snapshot.settings);
+    setLastRefreshAt(new Date());
+  }
+
+  async function refreshLibrary() {
+    if (NATIVE_RUNTIME) {
+      setScanning(true);
+      try {
+        const summary = await scanNativeLibrary();
+        await reloadNativeLibrary();
+        setToast({
+          message: summary.analyzed > 0
+            ? `${summary.analyzed} yeni veya değişen screenshot analiz edildi.`
+            : 'Klasör güncel.',
+        });
+      } catch (error) {
+        setToast({ message: error instanceof Error ? error.message : String(error) });
+      } finally {
+        setScanning(false);
+      }
+      return;
+    }
     setRefreshSalt((current) => current + 1);
     setLastRefreshAt(new Date());
     setToast({ message: 'Yerel galeri yeniden değerlendirildi.' });
+  }
+
+  async function chooseNativeFolder() {
+    setScanning(true);
+    try {
+      const summary = await selectAndScanFolder();
+      if (!summary) return;
+      await reloadNativeLibrary();
+      setToast({ message: `${summary.analyzed} screenshot cihazında analiz edildi.` });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setScanning(false);
+    }
   }
 
   function openArchivePick(item: ScreenshotItem) {
@@ -289,14 +383,16 @@ function App() {
     };
     setSurfaceHistory(nextHistory);
     localStorage.setItem('ss-tariff-surface-history', JSON.stringify(nextHistory));
+    if (item.native) void recordNativeResurface(item.id, 'opened');
     setSelectedItem(item);
   }
 
   async function updateStatus(item: ScreenshotItem, status: ScreenshotItem['status']) {
+    if (item.native) await updateNativeStatus(item.id, status);
     const updated = { ...item, status };
     setItems((current) => current.map((candidate) => (candidate.id === item.id ? updated : candidate)));
     if (selectedItem?.id === item.id) setSelectedItem(updated);
-    if (!item.id.startsWith('demo-')) await saveLocalItem(updated);
+    if (!item.native && !item.id.startsWith('demo-')) await saveLocalItem(updated);
   }
 
   async function importFiles(files: File[]) {
@@ -385,11 +481,18 @@ function App() {
   }
 
   async function emptyTrash() {
-    if (!window.confirm(`${trashItems.length} öğe kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`)) return;
-    await Promise.all(trashItems.filter((item) => !item.id.startsWith('demo-')).map((item) => deleteLocalItem(item.id)));
+    const prompt = NATIVE_RUNTIME
+      ? `${trashItems.length} dosya Windows Geri Dönüşüm Kutusu'na taşınsın mı?`
+      : `${trashItems.length} öğe kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`;
+    if (!window.confirm(prompt)) return;
+    await Promise.all(trashItems.map((item) => {
+      if (item.native) return moveNativeToSystemTrash(item.id);
+      if (!item.id.startsWith('demo-')) return deleteLocalItem(item.id);
+      return Promise.resolve();
+    }));
     trashItems.forEach((item) => item.blobUrl && URL.revokeObjectURL(item.blobUrl));
     setItems((current) => current.filter((item) => item.status !== 'trash'));
-    setToast({ message: `${trashItems.length} öğe kalıcı olarak silindi.` });
+    setToast({ message: NATIVE_RUNTIME ? `${trashItems.length} dosya Geri Dönüşüm Kutusu'na taşındı.` : `${trashItems.length} öğe kalıcı olarak silindi.` });
   }
 
   async function resetPrivateLibrary() {
@@ -451,8 +554,8 @@ function App() {
             {currentCopy.subtitle && <p>{currentCopy.subtitle}</p>}
           </div>
           <div className="topbar-actions">
-            <button className="secondary-button refresh-button" type="button" onClick={refreshLibrary}><RefreshCw size={16} /><span>Yenile</span></button>
-            <button className="primary-button" type="button" onClick={() => setImportOpen(true)}><Plus size={17} /> Screenshot ekle</button>
+            <button className="secondary-button refresh-button" type="button" disabled={scanning} onClick={() => void refreshLibrary()}><RefreshCw className={scanning ? 'spin' : ''} size={16} /><span>{scanning ? 'Taranıyor' : 'Yenile'}</span></button>
+            <button className="primary-button" type="button" disabled={scanning} onClick={() => { if (NATIVE_RUNTIME) void chooseNativeFolder(); else setImportOpen(true); }}><Plus size={17} /> {NATIVE_RUNTIME ? (nativeSettings?.sourceFolder ? 'Klasör' : 'Klasör seç') : 'Screenshot ekle'}</button>
           </div>
         </header>
 
@@ -470,7 +573,7 @@ function App() {
                   {recentItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => setSelectedItem(item)} />)}
                 </div>
               ) : (
-                <div className="recent-empty"><Images size={24} /><strong>Henüz screenshot yok</strong></div>
+                <div className="recent-empty"><Images size={24} /><strong>{libraryLoading ? 'Galeri açılıyor' : 'Henüz screenshot yok'}</strong>{NATIVE_RUNTIME && !libraryLoading && <button className="primary-button" type="button" onClick={() => void chooseNativeFolder()}><FolderOpen size={17} /> Klasör seç</button>}</div>
               )}
             </section>
 
@@ -672,7 +775,7 @@ function App() {
         </div>
       )}
 
-      {importOpen && (
+      {importOpen && !NATIVE_RUNTIME && (
         <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !importProgress) setImportOpen(false); }}>
           <div className="import-modal" role="dialog" aria-modal="true" aria-labelledby="import-title">
             <div className="modal-head"><div><span className="modal-icon"><Upload size={20} /></span><div><h2 id="import-title">Screenshot ekle</h2><p>Analiz tarayıcıdan çıkmadan başlar.</p></div></div><IconButton label="Pencereyi kapat" onClick={() => !importProgress && setImportOpen(false)}><X size={18} /></IconButton></div>
