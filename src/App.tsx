@@ -11,7 +11,6 @@ import {
   Grid2X2,
   HardDrive,
   Heart,
-  House,
   Images,
   Info,
   Layers3,
@@ -44,7 +43,7 @@ import {
 } from 'react';
 import { ScreenshotPreview } from './components/ScreenshotPreview';
 import {
-  buildPeriodBrief,
+  selectResurfaceItems,
   type SurfaceHistory,
 } from './core/memoryEngine';
 import { DEMO_ITEMS } from './data/demo';
@@ -65,19 +64,16 @@ import {
 } from './types';
 
 const VIEW_COPY: Record<ViewId, { title: string; subtitle: string }> = {
-  today: { title: 'Bugün', subtitle: '' },
-  library: { title: 'Galeri', subtitle: 'Kategoriler ve kayıtlar' },
+  recent: { title: 'Recent', subtitle: '' },
+  library: { title: 'Gallery', subtitle: 'Kategoriler ve kayıtlar' },
   cleaner: { title: 'Temizleyici', subtitle: 'Silmeden önce her öneri sende son kez durur.' },
   groups: { title: 'Gruplar', subtitle: 'Benzer niyetler, tek bir düzenli yerde.' },
   privacy: { title: 'Gizlilik', subtitle: 'Tüm analiz bu cihazda.' },
 };
 
 const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Images }> = [
-  { id: 'today', label: 'Bugün', icon: House },
-  { id: 'library', label: 'Galeri', icon: Images },
-  { id: 'cleaner', label: 'Temizleyici', icon: Trash2 },
-  { id: 'groups', label: 'Gruplar', icon: Layers3 },
-  { id: 'privacy', label: 'Gizlilik', icon: LockKeyhole },
+  { id: 'recent', label: 'Recent', icon: Clock3 },
+  { id: 'library', label: 'Gallery', icon: Images },
 ];
 
 const CATEGORY_ICONS: Record<Category, typeof Images> = {
@@ -192,7 +188,7 @@ function GalleryCategory({
 }
 
 function App() {
-  const [view, setView] = useState<ViewId>('today');
+  const [view, setView] = useState<ViewId>('recent');
   const [items, setItems] = useState<ScreenshotItem[]>(DEMO_ITEMS);
   const [category, setCategory] = useState<Category | 'all'>('all');
   const [query, setQuery] = useState('');
@@ -266,9 +262,24 @@ function App() {
   );
   const trashItems = useMemo(() => items.filter((item) => item.status === 'trash'), [items]);
   const gallerySize = activeItems.reduce((total, item) => total + item.size, 0);
-  const periodBrief = useMemo(
-    () => buildPeriodBrief(activeItems, lastRefreshAt, 30, surfaceHistory, refreshSalt),
-    [activeItems, lastRefreshAt, refreshSalt, surfaceHistory],
+  const recentItems = useMemo(
+    () => [...activeItems]
+      .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime())
+      .slice(0, 6),
+    [activeItems],
+  );
+  const archivePicks = useMemo(
+    () => {
+      const recentIds = new Set(recentItems.map((item) => item.id));
+      return selectResurfaceItems(
+        activeItems.filter((item) => !recentIds.has(item.id)),
+        lastRefreshAt,
+        surfaceHistory,
+        refreshSalt,
+        3,
+      );
+    },
+    [activeItems, lastRefreshAt, recentItems, refreshSalt, surfaceHistory],
   );
 
   function refreshLibrary() {
@@ -277,20 +288,14 @@ function App() {
     setToast({ message: 'Yerel galeri yeniden değerlendirildi.' });
   }
 
-  function acknowledgeResurface(openItem: boolean) {
-    const suggestion = periodBrief.resurface;
-    if (!suggestion) return;
+  function openArchivePick(item: ScreenshotItem) {
     const nextHistory = {
       ...surfaceHistory,
-      [suggestion.item.id]: new Date().toISOString(),
+      [item.id]: new Date().toISOString(),
     };
     setSurfaceHistory(nextHistory);
     localStorage.setItem('ss-tariff-surface-history', JSON.stringify(nextHistory));
-    if (openItem) setSelectedItem(suggestion.item);
-    else {
-      setRefreshSalt((current) => current + 1);
-      setLastRefreshAt(new Date());
-    }
+    setSelectedItem(item);
   }
 
   async function updateStatus(item: ScreenshotItem, status: ScreenshotItem['status']) {
@@ -430,7 +435,6 @@ function App() {
               >
                 <Icon size={18} strokeWidth={1.8} />
                 <span>{navItem.label}</span>
-                {navItem.id === 'cleaner' && cleanupQueue.length > 0 && <b>{cleanupQueue.length}</b>}
               </button>
             );
           })}
@@ -461,72 +465,46 @@ function App() {
           </div>
         </header>
 
-        {view === 'today' && (
-          <section className="page-content today-page">
-            <div className="today-layout">
-              <article className="resurface-card">
-                <div className="today-card-head">
-                  <div><Clock3 size={16} /><span><strong>Arşivden</strong><small>{periodBrief.resurface ? formatRelativeDate(periodBrief.resurface.item.createdAt) : 'Eski bir kayıt'}</small></span></div>
-                  <button type="button" onClick={() => acknowledgeResurface(false)} aria-label="Başka bir kayıt göster" title="Başka bir kayıt göster"><RefreshCw size={15} /></button>
+        {view === 'recent' && (
+          <section className="page-content recent-page">
+            <section className="recent-section" aria-labelledby="recent-title">
+              <div className="recent-section-head">
+                <h2 id="recent-title">En son</h2>
+                <button type="button" onClick={() => { setCategory('all'); setQuery(''); setView('library'); }}>
+                  Gallery <ArrowRight size={15} />
+                </button>
+              </div>
+              {recentItems.length > 0 ? (
+                <div className="library-grid recent-grid">
+                  {recentItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => setSelectedItem(item)} />)}
                 </div>
-                {periodBrief.resurface ? (
-                  <div className="resurface-content">
-                    <button type="button" className="resurface-preview" onClick={() => acknowledgeResurface(true)}>
-                      <ScreenshotPreview item={periodBrief.resurface.item} />
+              ) : (
+                <div className="recent-empty"><Images size={24} /><strong>Henüz screenshot yok</strong></div>
+              )}
+            </section>
+
+            <section className="archive-section" aria-labelledby="archive-title">
+              <div className="recent-section-head">
+                <h2 id="archive-title">Geçmişten</h2>
+                <IconButton label="Yeni arşiv seçkisi göster" onClick={() => setRefreshSalt((current) => current + 1)}><RefreshCw size={16} /></IconButton>
+              </div>
+              {archivePicks.length > 0 ? (
+                <div className="archive-picks-grid">
+                  {archivePicks.map((pick) => (
+                    <button className="archive-pick" type="button" key={pick.item.id} onClick={() => openArchivePick(pick.item)}>
+                      <span className="archive-pick-preview"><ScreenshotPreview item={pick.item} /></span>
+                      <span className="archive-pick-copy">
+                        <span className="archive-pick-meta"><i style={{ background: CATEGORY_META[pick.item.category].color }} />{formatRelativeDate(pick.item.createdAt)}</span>
+                        <strong>{pick.item.preview?.title ?? pick.item.name}</strong>
+                        <span className="archive-pick-reason">{pick.reason}</span>
+                      </span>
                     </button>
-                    <div className="resurface-copy">
-                      <span className="category-kicker"><i style={{ background: CATEGORY_META[periodBrief.resurface.item.category].color }} />{CATEGORY_META[periodBrief.resurface.item.category].label}</span>
-                      <h3>{periodBrief.resurface.item.preview?.title ?? periodBrief.resurface.item.name}</h3>
-                      <p>{periodBrief.resurface.reason}</p>
-                      <div className="resurface-actions">
-                        <button className="primary-button" type="button" onClick={() => acknowledgeResurface(true)}>Aç <ArrowRight size={15} /></button>
-                        <button className="secondary-button" type="button" onClick={() => acknowledgeResurface(false)}>Geç</button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="today-empty-memory"><Clock3 size={22} /><strong>Hafıza henüz genç</strong><p>En az 14 günlük değerli bir kayıt oluştuğunda burada yeniden karşılaşacaksın.</p></div>
-                )}
-              </article>
-
-              <article className="period-card">
-                <div className="today-card-head"><div><Grid2X2 size={16} /><span><strong>30 gün</strong></span></div></div>
-                <div className="period-metrics">
-                  <div><strong>{periodBrief.captured}</strong><span>yeni screenshot</span></div>
-                  <div><strong>{periodBrief.topCategory ? CATEGORY_META[periodBrief.topCategory].shortLabel : '—'}</strong><span>en çok kaydettiğin</span></div>
-                  <div><strong>{periodBrief.cleanupCandidates}</strong><span>temizlik fırsatı</span></div>
+                  ))}
                 </div>
-                <div className="period-comparison">
-                  <span style={{ width: `${Math.min(100, Math.max(8, periodBrief.captured * 8))}%` }} />
-                </div>
-                <p>Önceki dönem: {periodBrief.previousCaptured} screenshot</p>
-              </article>
-
-              <article className="cleanup-opportunity">
-                <div className="cleanup-orb"><span>01</span></div>
-                <div>
-                  <h3>{periodBrief.likelyJunk > 0 ? `${periodBrief.likelyJunk} anlamsız görüntü bulundu` : `${cleanupQueue.length} karar hazır`}</h3>
-                </div>
-                <button type="button" onClick={() => setView('cleaner')}>İncele <ArrowRight size={15} /></button>
-              </article>
-
-              <article className="memory-signals">
-                <div className="today-card-head"><div><Layers3 size={16} /><span><strong>Tekrar edenler</strong></span></div></div>
-                {periodBrief.recurringInterests.length > 0 ? (
-                  <div className="memory-tag-list">
-                    {periodBrief.recurringInterests.map((memory) => (
-                      <button type="button" key={memory.id} onClick={() => { setQuery(memory.label); setCategory('all'); setView('library'); }}>
-                        <span style={{ background: CATEGORY_META[memory.category].color }} />
-                        <strong>{memory.label}</strong>
-                        <small>{memory.occurrenceCount} kayıt</small>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="muted-copy">Aynı konu birkaç kez görüldüğünde burada kişisel bir ilgi olarak oluşur.</p>
-                )}
-              </article>
-            </div>
+              ) : (
+                <div className="recent-empty"><Clock3 size={24} /><strong>Eski kayıtlar burada görünecek</strong></div>
+              )}
+            </section>
           </section>
         )}
 
@@ -690,7 +668,7 @@ function App() {
       <nav className="mobile-nav" aria-label="Mobil menü">
         {NAV_ITEMS.map((navItem) => {
           const Icon = navItem.icon;
-          return <button type="button" key={navItem.id} className={view === navItem.id ? 'active' : ''} onClick={() => setView(navItem.id)}><Icon size={19} /><span>{navItem.label}</span></button>;
+          return <button type="button" key={navItem.id} className={view === navItem.id ? 'active' : ''} onClick={() => { if (navItem.id === 'library') { setCategory('all'); setQuery(''); } setView(navItem.id); }}><Icon size={19} /><span>{navItem.label}</span></button>;
         })}
       </nav>
 

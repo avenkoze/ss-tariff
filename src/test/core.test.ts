@@ -8,6 +8,7 @@ import type {
 import {
   buildPeriodBrief,
   selectResurfaceItem,
+  selectResurfaceItems,
   shouldNotifyResurface,
 } from '../core/memoryEngine';
 import { runIncrementalScan } from '../core/scanEngine';
@@ -55,6 +56,12 @@ describe('memory engine', () => {
     expect(brief.captured).toBeGreaterThan(0);
     expect(brief.cleanupCandidates).toBeGreaterThan(0);
     expect(brief.resurface?.item).toBeDefined();
+  });
+
+  it('builds a unique archive selection with the requested limit', () => {
+    const picks = selectResurfaceItems(DEMO_ITEMS, new Date('2026-08-31T12:00:00.000Z'), {}, 0, 3);
+    expect(picks).toHaveLength(3);
+    expect(new Set(picks.map((pick) => pick.item.id)).size).toBe(picks.length);
   });
 
   it('makes notification cadence deterministic for a given day', () => {

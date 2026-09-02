@@ -70,7 +70,7 @@ export interface ScreenshotItem {
   lastAnalyzedAt?: string;
 }
 
-export type ViewId = 'today' | 'library' | 'cleaner' | 'groups' | 'privacy';
+export type ViewId = 'recent' | 'library' | 'cleaner' | 'groups' | 'privacy';
 
 export interface AnalysisResult {
   category: Category;

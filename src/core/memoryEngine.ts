@@ -149,6 +149,26 @@ export function selectResurfaceItem(
   };
 }
 
+export function selectResurfaceItems(
+  items: ScreenshotItem[],
+  now: Date,
+  history: SurfaceHistory = {},
+  refreshSalt = 0,
+  limit = 3,
+): ResurfaceSuggestion[] {
+  const picks: ResurfaceSuggestion[] = [];
+  const temporaryHistory = { ...history };
+
+  for (let index = 0; index < Math.max(0, limit); index += 1) {
+    const suggestion = selectResurfaceItem(items, now, temporaryHistory, refreshSalt + index);
+    if (!suggestion) break;
+    picks.push(suggestion);
+    temporaryHistory[suggestion.item.id] = now.toISOString();
+  }
+
+  return picks;
+}
+
 export function buildPeriodBrief(
   items: ScreenshotItem[],
   now: Date,
