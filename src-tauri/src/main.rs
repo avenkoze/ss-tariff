@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  ss_tariff_lib::run();
+    ss_tariff_lib::run();
 }
