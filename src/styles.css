@@ -2398,61 +2398,16 @@ a {
   display: none;
 }
 
-/* Today */
-.today-intro {
-  display: flex;
-  min-height: 118px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  border-bottom: 1px solid var(--line);
-}
-
-.today-intro h2 {
-  margin: 7px 0 6px;
-  font-size: 24px;
-  font-weight: 520;
-}
-
-.today-intro p {
-  max-width: 720px;
-  margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.today-sync-state {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-}
-
-.today-sync-state > span {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--green);
-}
-
-.today-sync-state > div,
 .today-card-head span {
   display: grid;
   gap: 3px;
 }
 
-.today-sync-state strong,
 .today-card-head strong {
   font-size: 10px;
   font-weight: 650;
 }
 
-.today-sync-state small,
 .today-card-head small {
   color: var(--muted);
   font-size: 8px;
@@ -3116,23 +3071,6 @@ a {
   .flow-step b,
   .blocked-cloud b {
     display: none;
-  }
-
-  .today-intro {
-    min-height: 134px;
-    align-items: flex-start;
-    flex-direction: column;
-    justify-content: center;
-    gap: 13px;
-  }
-
-  .today-intro h2 {
-    font-size: 20px;
-  }
-
-  .today-sync-state > span {
-    width: 29px;
-    height: 29px;
   }
 
   .resurface-card {

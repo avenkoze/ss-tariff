@@ -45,7 +45,6 @@ import {
 import { ScreenshotPreview } from './components/ScreenshotPreview';
 import {
   buildPeriodBrief,
-  describePeriod,
   type SurfaceHistory,
 } from './core/memoryEngine';
 import { DEMO_ITEMS } from './data/demo';
@@ -66,7 +65,7 @@ import {
 } from './types';
 
 const VIEW_COPY: Record<ViewId, { title: string; subtitle: string }> = {
-  today: { title: 'Bugün', subtitle: 'Yerel arşiv' },
+  today: { title: 'Bugün', subtitle: '' },
   library: { title: 'Galeri', subtitle: 'Kategoriler ve kayıtlar' },
   cleaner: { title: 'Temizleyici', subtitle: 'Silmeden önce her öneri sende son kez durur.' },
   groups: { title: 'Gruplar', subtitle: 'Benzer niyetler, tek bir düzenli yerde.' },
@@ -453,7 +452,7 @@ function App() {
           <IconButton label="Menüyü aç" className="menu-button" onClick={() => setSidebarOpen(true)}><Menu size={20} /></IconButton>
           <div className="page-heading">
             <h1>{currentCopy.title}</h1>
-            <p>{currentCopy.subtitle}</p>
+            {currentCopy.subtitle && <p>{currentCopy.subtitle}</p>}
           </div>
           <div className="topbar-actions">
             <button className="local-status" type="button" onClick={() => setView('privacy')}><span /> Yalnızca cihazında</button>
@@ -464,18 +463,6 @@ function App() {
 
         {view === 'today' && (
           <section className="page-content today-page">
-            <div className="today-intro">
-              <div>
-                <span className="eyebrow">{lastRefreshAt.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }).toLocaleUpperCase('tr-TR')} / YEREL ARŞİV</span>
-                <h2>Bugün.</h2>
-                <p>{describePeriod(periodBrief)}</p>
-              </div>
-              <div className="today-sync-state">
-                <span><RefreshCw size={15} /></span>
-                <div><strong>Güncel</strong><small>Son kontrol {lastRefreshAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</small></div>
-              </div>
-            </div>
-
             <div className="today-layout">
               <article className="resurface-card">
                 <div className="today-card-head">
@@ -503,7 +490,7 @@ function App() {
               </article>
 
               <article className="period-card">
-                <div className="today-card-head"><div><Grid2X2 size={16} /><span><strong>30 gün</strong><small>Kısa döküm</small></span></div></div>
+                <div className="today-card-head"><div><Grid2X2 size={16} /><span><strong>30 gün</strong></span></div></div>
                 <div className="period-metrics">
                   <div><strong>{periodBrief.captured}</strong><span>yeni screenshot</span></div>
                   <div><strong>{periodBrief.topCategory ? CATEGORY_META[periodBrief.topCategory].shortLabel : '—'}</strong><span>en çok kaydettiğin</span></div>
@@ -512,21 +499,19 @@ function App() {
                 <div className="period-comparison">
                   <span style={{ width: `${Math.min(100, Math.max(8, periodBrief.captured * 8))}%` }} />
                 </div>
-                <p>Önceki dönemde {periodBrief.previousCaptured} screenshot almıştın. Bu özet yalnızca ölçülebilen yerel kayıtlardan üretildi.</p>
+                <p>Önceki dönem: {periodBrief.previousCaptured} screenshot</p>
               </article>
 
               <article className="cleanup-opportunity">
                 <div className="cleanup-orb"><span>01</span></div>
                 <div>
-                  <span className="eyebrow">TEMİZLENECEKLER</span>
                   <h3>{periodBrief.likelyJunk > 0 ? `${periodBrief.likelyJunk} anlamsız görüntü bulundu` : `${cleanupQueue.length} karar hazır`}</h3>
-                  <p>Siyah, boş, tekrar veya süresi geçmiş kayıtları nedenleriyle incele.</p>
                 </div>
                 <button type="button" onClick={() => setView('cleaner')}>İncele <ArrowRight size={15} /></button>
               </article>
 
               <article className="memory-signals">
-                <div className="today-card-head"><div><Layers3 size={16} /><span><strong>Tekrar edenler</strong><small>Aynı konu birden fazla kez kaydedildi</small></span></div></div>
+                <div className="today-card-head"><div><Layers3 size={16} /><span><strong>Tekrar edenler</strong></span></div></div>
                 {periodBrief.recurringInterests.length > 0 ? (
                   <div className="memory-tag-list">
                     {periodBrief.recurringInterests.map((memory) => (
