@@ -4,33 +4,21 @@ import {
   ArrowRight,
   BarChart3,
   Check,
-  CircleHelp,
-  Clock3,
   Download,
-  FileText,
   FolderOpen,
-  Grid2X2,
-  HardDrive,
-  Heart,
+  Image,
   Images,
-  Info,
   Layers3,
-  Lightbulb,
   LockKeyhole,
-  MapPin,
-  Menu,
-  MessageCircle,
-  MoreHorizontal,
+  Palette,
   Plus,
   RefreshCw,
   RotateCcw,
   Search,
   Settings2,
   ShieldCheck,
-  ShoppingBag,
   Trash2,
   Upload,
-  Utensils,
   X,
 } from 'lucide-react';
 import {
@@ -44,18 +32,31 @@ import {
   useState,
 } from 'react';
 import { ScreenshotPreview } from './components/ScreenshotPreview';
+import { AppHeader } from './components/AppHeader';
+import { CategoryPoster } from './components/CategoryPoster';
+import { RecentShelf } from './components/RecentShelf';
 import {
   selectResurfaceItems,
   type SurfaceHistory,
 } from './core/memoryEngine';
 import { DEMO_ITEMS } from './data/demo';
 import { ANALYSIS_VERSION, analyzeFile, findSimilarGroup } from './lib/analyzer';
-import { clearLocalItems, deleteLocalItem, loadLocalItems, saveLocalItem } from './lib/database';
+import { deleteLocalItem, loadLocalItems, saveLocalItem } from './lib/database';
+import {
+  CURATED_WALLPAPERS,
+  getLaunchWallpaper,
+  loadBrowserAppearance,
+  normalizeAppearance,
+  saveBrowserAppearance,
+  type AppearanceSettings,
+} from './lib/appearance';
+import { loadBrowserBackground, saveBrowserBackground } from './lib/appearanceStorage';
 import {
   getNativeSnapshot,
   cancelNativeScan,
   getNativePeriodReport,
   getNativeResurfaceCandidates,
+  getNativeFileUrl,
   isNativeRuntime,
   moveNativeToSystemTrash,
   onNativeLibraryChanged,
@@ -65,6 +66,7 @@ import {
   searchNativeLibrary,
   selectAndScanFolder,
   saveNativeSettings,
+  selectCustomBackground,
   updateNativeCategory,
   updateNativeStatus,
   type NativePeriodReport,
@@ -74,8 +76,6 @@ import {
 import {
   formatBytes,
   formatRelativeDate,
-  getCleanupReason,
-  getCleanupScore,
   searchItems,
 } from './lib/search';
 import { checkForUpdate, installUpdate, type Update } from './lib/updater';
@@ -86,32 +86,7 @@ import {
   type ViewId,
 } from './types';
 
-const VIEW_COPY: Record<ViewId, { title: string; subtitle: string }> = {
-  recent: { title: 'Recent', subtitle: '' },
-  library: { title: 'Gallery', subtitle: '' },
-  cleaner: { title: 'Temizleyici', subtitle: 'Silmeden önce her öneri sende son kez durur.' },
-  groups: { title: 'Gruplar', subtitle: 'Benzer niyetler, tek bir düzenli yerde.' },
-  privacy: { title: 'Gizlilik', subtitle: 'Tüm analiz bu cihazda.' },
-};
-
-const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Images }> = [
-  { id: 'recent', label: 'Recent', icon: Clock3 },
-  { id: 'library', label: 'Gallery', icon: Images },
-];
-
 const NATIVE_RUNTIME = isNativeRuntime();
-
-const CATEGORY_ICONS: Record<Category, typeof Images> = {
-  shopping: ShoppingBag,
-  food: Utensils,
-  places: MapPin,
-  chats: MessageCircle,
-  ideas: Lightbulb,
-  documents: FileText,
-  social: Heart,
-  junk: Trash2,
-  other: Grid2X2,
-};
 
 function loadSurfaceHistory(): SurfaceHistory {
   try {
@@ -139,15 +114,6 @@ function IconButton({
   );
 }
 
-function Brand() {
-  return (
-    <div className="brand" aria-label="SS TARIFF">
-      <span className="brand-mark">SS</span>
-      <span className="brand-name">TARIFF</span>
-    </div>
-  );
-}
-
 function ConfidenceBar({ value }: { value: number }) {
   return (
     <div className="confidence" aria-label={`Sınıflandırma güveni yüzde ${Math.round(value * 100)}`}>
@@ -156,13 +122,22 @@ function ConfidenceBar({ value }: { value: number }) {
   );
 }
 
-function LibraryCard({ item, onOpen }: { item: ScreenshotItem; onOpen: () => void }) {
+function LibraryCard({
+  item,
+  onOpen,
+  onTrash,
+}: {
+  item: ScreenshotItem;
+  onOpen: () => void;
+  onTrash?: () => void;
+}) {
   return (
     <article className="library-card">
       <button className="card-preview-button" type="button" onClick={onOpen} aria-label={`${item.name} detayını aç`}>
         <ScreenshotPreview item={item} />
         {item.duplicateGroup && <span className="duplicate-chip"><Layers3 size={12} /> 2 benzer</span>}
       </button>
+      {onTrash && <button className="tile-trash-button" type="button" onClick={onTrash} aria-label={`${item.name} öğesini sil`} title="Sil"><Trash2 size={17} /></button>}
       <div className="card-meta">
         <div>
           <span className="category-dot" style={{ background: CATEGORY_META[item.category].color }} />
@@ -174,41 +149,22 @@ function LibraryCard({ item, onOpen }: { item: ScreenshotItem; onOpen: () => voi
   );
 }
 
-function CategoryGlyph({ categoryId, size = 18 }: { categoryId: Category; size?: number }) {
-  const Icon = CATEGORY_ICONS[categoryId];
-  return <Icon size={size} strokeWidth={1.8} />;
-}
 
-function GalleryCategory({
-  categoryId,
-  items,
-  onOpen,
-}: {
-  categoryId: Category;
-  items: ScreenshotItem[];
-  onOpen: () => void;
-}) {
-  const previews = items.slice(0, 3);
-  const meta = CATEGORY_META[categoryId];
-
-  return (
-    <button
-      className="category-cover"
-      type="button"
-      onClick={onOpen}
-      style={{ '--gallery-accent': meta.color } as CSSProperties}
-      aria-label={`${meta.label} kategorisini aç, ${items.length} screenshot`}
-    >
-      <span className="category-cover-preview" data-count={previews.length} aria-hidden="true">
-        {previews.map((item) => <ScreenshotPreview key={item.id} item={item} />)}
-      </span>
-      <span className="category-cover-meta">
-        <span className="category-cover-icon"><CategoryGlyph categoryId={categoryId} /></span>
-        <span><strong>{meta.label}</strong><small>{items.length} screenshot</small></span>
-        <ArrowRight size={18} />
-      </span>
-    </button>
-  );
+async function measureImageLuminance(file: Blob): Promise<number> {
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = 32;
+  canvas.height = 32;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return 0.4;
+  context.drawImage(bitmap, 0, 0, 32, 32);
+  bitmap.close();
+  const pixels = context.getImageData(0, 0, 32, 32).data;
+  let luminance = 0;
+  for (let index = 0; index < pixels.length; index += 4) {
+    luminance += (pixels[index] * 0.2126 + pixels[index + 1] * 0.7152 + pixels[index + 2] * 0.0722) / 255;
+  }
+  return luminance / (pixels.length / 4);
 }
 
 function App() {
@@ -217,19 +173,18 @@ function App() {
   const [category, setCategory] = useState<Category | 'all'>('all');
   const [query, setQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<ScreenshotItem | null>(null);
+  const [selectedFromArchive, setSelectedFromArchive] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [toast, setToast] = useState<{ message: string; undoId?: string } | null>(null);
-  const [deferredCleanerIds, setDeferredCleanerIds] = useState<string[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshSalt, setRefreshSalt] = useState(0);
   const [lastRefreshAt, setLastRefreshAt] = useState(() => new Date());
   const [surfaceHistory, setSurfaceHistory] = useState<SurfaceHistory>(loadSurfaceHistory);
   const [nativeSettings, setNativeSettings] = useState<NativeSettings | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<NativeSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'settings' | 'report'>('settings');
+  const [settingsTab, setSettingsTab] = useState<'appearance' | 'settings' | 'report'>('appearance');
   const [reportDays, setReportDays] = useState<7 | 30>(7);
   const [periodReport, setPeriodReport] = useState<NativePeriodReport | null>(null);
   const [nativeResurface, setNativeResurface] = useState<NativeResurfaceCandidate[]>([]);
@@ -239,7 +194,13 @@ function App() {
   const [galleryLimit, setGalleryLimit] = useState(120);
   const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
+  const [appearance, setAppearance] = useState<AppearanceSettings>(loadBrowserAppearance);
+  const [appearanceDraft, setAppearanceDraft] = useState<AppearanceSettings>(appearance);
+  const [launchWallpaper, setLaunchWallpaper] = useState(() => getLaunchWallpaper(appearance));
+  const [browserBackgroundUrl, setBrowserBackgroundUrl] = useState<string>();
   const fileInput = useRef<HTMLInputElement>(null);
+  const backgroundInput = useRef<HTMLInputElement>(null);
+  const browserBackgroundUrlRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
@@ -250,8 +211,15 @@ function App() {
           setItems(snapshot.assets);
           setNativeSettings(snapshot.settings);
           setSettingsDraft(snapshot.settings);
+          const nextAppearance = normalizeAppearance(snapshot.settings.appearance);
+          setAppearance(nextAppearance);
+          setAppearanceDraft(nextAppearance);
+          setLaunchWallpaper(getLaunchWallpaper(nextAppearance));
           setNativeResurface(resurface);
-          if (!snapshot.settings.sourceFolder) setSettingsOpen(true);
+          if (!snapshot.settings.sourceFolder) {
+            setSettingsTab('settings');
+            setSettingsOpen(true);
+          }
         })
         .catch((error) => {
           if (active) setToast({ message: error instanceof Error ? error.message : String(error) });
@@ -269,6 +237,27 @@ function App() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (NATIVE_RUNTIME || appearance.backgroundMode !== 'custom') return undefined;
+    let active = true;
+    loadBrowserBackground()
+      .then((blob) => {
+        if (!active || !blob) return;
+        const url = URL.createObjectURL(blob);
+        if (browserBackgroundUrlRef.current) URL.revokeObjectURL(browserBackgroundUrlRef.current);
+        browserBackgroundUrlRef.current = url;
+        setBrowserBackgroundUrl(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => () => {
+    if (browserBackgroundUrlRef.current) URL.revokeObjectURL(browserBackgroundUrlRef.current);
   }, []);
 
   useEffect(() => {
@@ -386,22 +375,6 @@ function App() {
     () => visibleItems.slice(0, galleryLimit),
     [visibleItems, galleryLimit],
   );
-  const cleanupQueue = useMemo(
-    () => {
-      const candidates = items
-        .filter((item) => item.status === 'active' && getCleanupScore(item) >= 20)
-        .sort((first, second) => getCleanupScore(second) - getCleanupScore(first));
-      const deferred = new Set(deferredCleanerIds);
-      return [
-        ...candidates.filter((item) => !deferred.has(item.id)),
-        ...deferredCleanerIds
-          .map((id) => candidates.find((item) => item.id === id))
-          .filter((item): item is ScreenshotItem => Boolean(item)),
-      ];
-    },
-    [items, deferredCleanerIds],
-  );
-  const trashItems = useMemo(() => items.filter((item) => item.status === 'trash'), [items]);
   const recentItems = useMemo(
     () => [...activeItems]
       .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime())
@@ -457,7 +430,7 @@ function App() {
     }
     setRefreshSalt((current) => current + 1);
     setLastRefreshAt(new Date());
-    setToast({ message: 'Yerel galeri yeniden değerlendirildi.' });
+    setToast({ message: 'Galeri güncellendi.' });
   }
 
   async function chooseNativeFolder() {
@@ -479,21 +452,81 @@ function App() {
     setToast({ message: 'Tarama mevcut dosyadan sonra duracak.' });
   }
 
-  function openNativeSettings(tab: 'settings' | 'report' = 'settings') {
+  function openSettings(tab: 'appearance' | 'settings' | 'report' = 'appearance') {
     setSettingsDraft(nativeSettings ? { ...nativeSettings, scheduleTimes: [...nativeSettings.scheduleTimes] } : null);
+    setAppearanceDraft({ ...appearance });
     setSettingsTab(tab);
     setSettingsOpen(true);
   }
 
-  async function persistNativeSettings() {
-    if (!settingsDraft) return;
+  async function persistSettings() {
+    const nextAppearance = normalizeAppearance(appearanceDraft);
     try {
-      await saveNativeSettings(settingsDraft);
-      setNativeSettings(settingsDraft);
+      if (NATIVE_RUNTIME && settingsDraft) {
+        const nextSettings = { ...settingsDraft, appearance: nextAppearance };
+        await saveNativeSettings(nextSettings);
+        setNativeSettings(nextSettings);
+        setSettingsDraft(nextSettings);
+      } else {
+        saveBrowserAppearance(nextAppearance);
+      }
+      setAppearance(nextAppearance);
+      const selectedWallpaper = CURATED_WALLPAPERS.find((wallpaper) => wallpaper.id === nextAppearance.backgroundId);
+      if (selectedWallpaper) setLaunchWallpaper(selectedWallpaper);
       setSettingsOpen(false);
       setToast({ message: 'Ayarlar kaydedildi.' });
     } catch (error) {
       setToast({ message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async function chooseCustomBackground() {
+    if (!NATIVE_RUNTIME) {
+      backgroundInput.current?.click();
+      return;
+    }
+    try {
+      const prepared = await selectCustomBackground();
+      if (!prepared) return;
+      setAppearanceDraft((current) => ({
+        ...current,
+        backgroundMode: 'custom',
+        customBackgroundPath: prepared.path,
+        customBackgroundLuminance: prepared.luminance,
+      }));
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async function handleBackgroundInput(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setToast({ message: 'PNG, JPG veya WebP bir görsel seç.' });
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setToast({ message: 'Arka plan 50 MB’den küçük olmalı.' });
+      return;
+    }
+    try {
+      const [luminance] = await Promise.all([
+        measureImageLuminance(file),
+        saveBrowserBackground(file),
+      ]);
+      const url = URL.createObjectURL(file);
+      if (browserBackgroundUrlRef.current) URL.revokeObjectURL(browserBackgroundUrlRef.current);
+      browserBackgroundUrlRef.current = url;
+      setBrowserBackgroundUrl(url);
+      setAppearanceDraft((current) => ({
+        ...current,
+        backgroundMode: 'custom',
+        customBackgroundLuminance: luminance,
+      }));
+    } catch {
+      setToast({ message: 'Bu görsel arka plan olarak hazırlanamadı.' });
     }
   }
 
@@ -510,6 +543,7 @@ function App() {
     if (item.native) await recordNativeResurface(item.id, 'dismissed');
     setNativeResurface((current) => current.filter((candidate) => candidate.item.id !== item.id));
     setSelectedItem(null);
+    setSelectedFromArchive(false);
     setToast({ message: 'Bu kayıt yakın zamanda yeniden gösterilmeyecek.' });
   }
 
@@ -532,6 +566,12 @@ function App() {
     setSurfaceHistory(nextHistory);
     localStorage.setItem('ss-tariff-surface-history', JSON.stringify(nextHistory));
     if (item.native) void recordNativeResurface(item.id, 'opened');
+    setSelectedFromArchive(true);
+    setSelectedItem(item);
+  }
+
+  function openItem(item: ScreenshotItem) {
+    setSelectedFromArchive(false);
     setSelectedItem(item);
   }
 
@@ -619,7 +659,23 @@ function App() {
 
   async function sendToTrash(item: ScreenshotItem) {
     await updateStatus(item, 'trash');
-    setToast({ message: 'Temizleme kutusuna taşındı.', undoId: item.id });
+    setToast({ message: 'Çöpe taşındı.', undoId: item.id });
+  }
+
+  async function deleteJunk(item: ScreenshotItem) {
+    if (!window.confirm(`${item.name} silinsin mi?`)) return;
+    try {
+      if (item.native) {
+        await moveNativeToSystemTrash(item.id);
+      } else if (!item.id.startsWith('demo-')) {
+        await deleteLocalItem(item.id);
+      }
+      if (item.blobUrl) URL.revokeObjectURL(item.blobUrl);
+      setItems((current) => current.filter((candidate) => candidate.id !== item.id));
+      setToast({ message: 'Silindi.' });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   async function undoTrash(id: string) {
@@ -628,105 +684,63 @@ function App() {
     setToast(null);
   }
 
-  async function emptyTrash() {
-    const prompt = NATIVE_RUNTIME
-      ? `${trashItems.length} dosya Windows Geri Dönüşüm Kutusu'na taşınsın mı?`
-      : `${trashItems.length} öğe kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`;
-    if (!window.confirm(prompt)) return;
-    await Promise.all(trashItems.map((item) => {
-      if (item.native) return moveNativeToSystemTrash(item.id);
-      if (!item.id.startsWith('demo-')) return deleteLocalItem(item.id);
-      return Promise.resolve();
-    }));
-    trashItems.forEach((item) => item.blobUrl && URL.revokeObjectURL(item.blobUrl));
-    setItems((current) => current.filter((item) => item.status !== 'trash'));
-    setToast({ message: NATIVE_RUNTIME ? `${trashItems.length} dosya Geri Dönüşüm Kutusu'na taşındı.` : `${trashItems.length} öğe kalıcı olarak silindi.` });
-  }
+  const nativeCustomBackgroundUrl = appearance.customBackgroundPath
+    ? getNativeFileUrl(appearance.customBackgroundPath)
+    : undefined;
+  const customBackgroundUrl = NATIVE_RUNTIME ? nativeCustomBackgroundUrl : browserBackgroundUrl;
+  const backgroundUrl = appearance.backgroundMode === 'custom' && customBackgroundUrl
+    ? customBackgroundUrl
+    : appearance.backgroundMode === 'curated'
+      ? launchWallpaper.src
+      : undefined;
+  const backgroundLuminance = appearance.backgroundMode === 'custom'
+    ? appearance.customBackgroundLuminance ?? 0.4
+    : launchWallpaper.luminance;
+  const shellStyle = {
+    '--wallpaper-dim': `${Math.round((0.44 + backgroundLuminance * 0.2) * 100)}%`,
+    '--wallpaper-position': launchWallpaper.position,
+    '--solid-background': appearance.solidColor,
+  } as CSSProperties;
+  const draftCustomBackgroundUrl = NATIVE_RUNTIME && appearanceDraft.customBackgroundPath
+    ? getNativeFileUrl(appearanceDraft.customBackgroundPath)
+    : browserBackgroundUrl;
 
-  async function resetPrivateLibrary() {
-    if (!window.confirm('İçe aktardığın tüm yerel dosyalar bu tarayıcıdan silinsin mi?')) return;
-    await clearLocalItems();
-    items.forEach((item) => item.blobUrl && URL.revokeObjectURL(item.blobUrl));
-    setItems(DEMO_ITEMS);
-    setSelectedItem(null);
-    setToast({ message: 'Yerel galeri temizlendi. Demo kayıtları kaldı.' });
+  function changeView(nextView: ViewId) {
+    if (nextView === 'library') {
+      setCategory('all');
+      setQuery('');
+    }
+    setView(nextView);
   }
-
-  const currentCopy = VIEW_COPY[view];
 
   return (
-    <div className="app-shell">
-      <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
-        <div className="sidebar-head">
-          <Brand />
-          <IconButton label="Menüyü kapat" className="sidebar-close" onClick={() => setSidebarOpen(false)}><X size={18} /></IconButton>
-        </div>
-        <nav className="primary-nav" aria-label="Ana menü">
-          {NAV_ITEMS.map((navItem) => {
-            const Icon = navItem.icon;
-            return (
-              <button
-                type="button"
-                key={navItem.id}
-                className={view === navItem.id ? 'active' : ''}
-                onClick={() => {
-                  if (navItem.id === 'library') {
-                    setCategory('all');
-                    setQuery('');
-                  }
-                  setView(navItem.id);
-                  setSidebarOpen(false);
-                }}
-              >
-                <Icon size={18} strokeWidth={1.8} />
-                <span>{navItem.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-        <div className="sidebar-library-info">
-          <div><HardDrive size={15} /><strong>{activeItems.length} öğe</strong></div>
-          <div className="storage-meter"><span style={{ width: `${Math.min(100, (activeItems.length / 20) * 100)}%` }} /></div>
-        </div>
-        <div className="private-pill"><ShieldCheck size={16} /><span><strong>Cihazda</strong><small>Ağ aktarımı yok</small></span></div>
-        {NATIVE_RUNTIME ? (
-          <button className="help-link" type="button" onClick={() => openNativeSettings()}><Settings2 size={17} /> Ayarlar</button>
-        ) : (
-          <button className="help-link" type="button"><CircleHelp size={16} /> Yardım & geri bildirim</button>
-        )}
-      </aside>
-
-      {sidebarOpen && <button className="sidebar-scrim" type="button" aria-label="Menüyü kapat" onClick={() => setSidebarOpen(false)} />}
-
+    <div className={`app-shell background-${appearance.backgroundMode}`} style={shellStyle}>
+      {backgroundUrl && <div className="app-wallpaper" style={{ backgroundImage: `url(${JSON.stringify(backgroundUrl)})` }} />}
+      <div className="app-wallpaper-veil" />
       <main className="main-area">
-        <header className="topbar">
-          <IconButton label="Menüyü aç" className="menu-button" onClick={() => setSidebarOpen(true)}><Menu size={20} /></IconButton>
-          <div className="page-heading">
-            <h1>{currentCopy.title}</h1>
-            {currentCopy.subtitle && <p>{currentCopy.subtitle}</p>}
-          </div>
-          <div className="topbar-actions">
-            <button className="secondary-button refresh-button" type="button" onClick={() => { if (scanning && NATIVE_RUNTIME) void stopNativeScan(); else void refreshLibrary(); }}>{scanning ? <X size={16} /> : <RefreshCw size={16} />}<span>{scanning ? 'Durdur' : 'Yenile'}</span></button>
-            <button className="primary-button" type="button" disabled={scanning} onClick={() => { if (NATIVE_RUNTIME) void chooseNativeFolder(); else setImportOpen(true); }}><Plus size={17} /> {NATIVE_RUNTIME ? (nativeSettings?.sourceFolder ? 'Klasör' : 'Klasör seç') : 'Screenshot ekle'}</button>
-          </div>
-        </header>
+        <AppHeader
+          view={view}
+          scanning={scanning}
+          addLabel={NATIVE_RUNTIME ? (nativeSettings?.sourceFolder ? 'Klasör' : 'Klasör seç') : 'Ekle'}
+          onViewChange={changeView}
+          onRefresh={() => { if (scanning && NATIVE_RUNTIME) void stopNativeScan(); else void refreshLibrary(); }}
+          onAdd={() => { if (NATIVE_RUNTIME) void chooseNativeFolder(); else setImportOpen(true); }}
+          onSettings={() => openSettings()}
+        />
 
         {view === 'recent' && (
           <section className="page-content recent-page">
             <section className="recent-section" aria-labelledby="recent-title">
-              <div className="recent-section-head">
-                <h2 id="recent-title">En son</h2>
-                <button type="button" onClick={() => { setCategory('all'); setQuery(''); setView('library'); }}>
-                  Gallery <ArrowRight size={15} />
-                </button>
+              <div className="page-title-row">
+                <h1 id="recent-title">Recent</h1>
+                <button type="button" onClick={() => changeView('library')}>Tümünü gör <ArrowRight size={18} /></button>
               </div>
-              {recentItems.length > 0 ? (
-                <div className="library-grid recent-grid">
-                  {recentItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => setSelectedItem(item)} />)}
-                </div>
-              ) : (
-                <div className="recent-empty"><Images size={24} /><strong>{libraryLoading ? 'Galeri açılıyor' : 'Henüz screenshot yok'}</strong>{NATIVE_RUNTIME && !libraryLoading && <button className="primary-button" type="button" onClick={() => void chooseNativeFolder()}><FolderOpen size={17} /> Klasör seç</button>}</div>
-              )}
+              <RecentShelf
+                items={recentItems}
+                loading={libraryLoading}
+                onOpen={openItem}
+                onChooseSource={() => { if (NATIVE_RUNTIME) void chooseNativeFolder(); else setImportOpen(true); }}
+              />
             </section>
 
             <section className="archive-section" aria-labelledby="archive-title">
@@ -740,7 +754,7 @@ function App() {
                     <button className="archive-pick" type="button" key={pick.item.id} onClick={() => openArchivePick(pick.item)}>
                       <span className="archive-pick-preview"><ScreenshotPreview item={pick.item} /></span>
                       <span className="archive-pick-copy">
-                        <span className="archive-pick-meta"><i style={{ background: CATEGORY_META[pick.item.category].color }} />{formatRelativeDate(pick.item.createdAt)}</span>
+                        <span className="archive-pick-meta">{CATEGORY_META[pick.item.category].shortLabel} · {formatRelativeDate(pick.item.createdAt)}</span>
                         <strong>{pick.item.preview?.title ?? pick.item.name}</strong>
                         <span className="archive-pick-reason">{pick.reason}</span>
                       </span>
@@ -748,7 +762,7 @@ function App() {
                   ))}
                 </div>
               ) : (
-                <div className="recent-empty"><Clock3 size={24} /><strong>Eski kayıtlar burada görünecek</strong></div>
+                <div className="recent-empty"><strong>Eski kayıtlar burada görünecek</strong></div>
               )}
             </section>
           </section>
@@ -759,11 +773,12 @@ function App() {
             {category !== 'all' && (
               <div className="gallery-detail-bar" style={{ '--gallery-accent': CATEGORY_META[category].color } as CSSProperties}>
                 <IconButton label="Tüm kategorilere dön" className="gallery-back" onClick={() => { setCategory('all'); setQuery(''); }}><ArrowLeft size={18} /></IconButton>
-                <span className="gallery-category-mark"><CategoryGlyph categoryId={category} size={22} /></span>
-                <h2>{CATEGORY_META[category].label}</h2>
+                <h1>{CATEGORY_META[category].label}</h1>
                 <strong>{visibleItems.length}</strong>
               </div>
             )}
+
+            {category === 'all' && !query.trim() && <div className="page-title-row"><h1>Gallery</h1></div>}
 
             <div className="gallery-search-row">
               <label className="smart-search">
@@ -780,7 +795,7 @@ function App() {
             {category === 'all' && !query.trim() ? (
               <div className="category-gallery">
                 {galleryCategories.map((group) => (
-                  <GalleryCategory
+                  <CategoryPoster
                     key={group.categoryId}
                     categoryId={group.categoryId}
                     items={group.items}
@@ -793,7 +808,7 @@ function App() {
                 {query && <div className="gallery-results-head"><h3>“{query}”</h3><span>{visibleItems.length} sonuç</span></div>}
                 {visibleItems.length > 0 ? (
                   <div className="library-grid gallery-items-grid">
-                    {renderedVisibleItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => setSelectedItem(item)} />)}
+                    {renderedVisibleItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => openItem(item)} onTrash={category === 'junk' ? () => void deleteJunk(item) : undefined} />)}
                   </div>
                 ) : (
                   <div className="empty-state"><Search size={25} /><h2>Sonuç bulunamadı</h2><p>Aramayı kısalt veya kategorilere dön.</p><button className="secondary-button" type="button" onClick={() => { setQuery(''); setCategory('all'); }}>Galeriye dön</button></div>
@@ -804,144 +819,87 @@ function App() {
           </section>
         )}
 
-        {view === 'cleaner' && (
-          <section className="page-content cleaner-page">
-            <div className="cleaner-toolbar">
-              <div><span className="eyebrow">İNCELEME KUYRUĞU</span><h2>{cleanupQueue.length} karar kaldı</h2><p>En güçlü öneriler önce gösterilir.</p></div>
-              <div className="queue-progress" aria-label={`${cleanupQueue.length} temizleme önerisi`}><span style={{ width: `${Math.max(8, 100 - cleanupQueue.length * 8)}%` }} /></div>
-              {trashItems.length > 0 && <button className="secondary-button danger-text" type="button" onClick={() => void emptyTrash()}><Trash2 size={16} /> Çöpü boşalt ({trashItems.length})</button>}
-            </div>
-            {cleanupQueue.length > 0 ? (
-              <div className="cleaner-workspace">
-                <div className="cleaner-stage">
-                  <div className="cleaner-reason"><Info size={15} /><strong>{getCleanupReason(cleanupQueue[0])}</strong><span>%{Math.min(99, getCleanupScore(cleanupQueue[0]) + 30)} emin</span></div>
-                  <ScreenshotPreview item={cleanupQueue[0]} className="cleaner-preview" />
-                  <div className="cleaner-item-meta"><strong>{cleanupQueue[0].name}</strong><span>{formatRelativeDate(cleanupQueue[0].createdAt)} · {formatBytes(cleanupQueue[0].size)}</span></div>
-                </div>
-                <div className="cleaner-decisions">
-                  <button className="decision-button keep" type="button" onClick={() => void updateStatus(cleanupQueue[0], 'kept')}><Check size={22} /><span><strong>Sakla</strong><small>Bir daha önerme</small></span></button>
-                  <button className="decision-button later" type="button" onClick={() => setDeferredCleanerIds((current) => [...current.filter((id) => id !== cleanupQueue[0].id), cleanupQueue[0].id])}><Clock3 size={21} /><span><strong>Sonra</strong><small>Kuyruğun sonuna at</small></span></button>
-                  <button className="decision-button delete" type="button" onClick={() => void sendToTrash(cleanupQueue[0])}><Trash2 size={22} /><span><strong>Temizle</strong><small>Önce çöp kutusuna</small></span></button>
-                </div>
-                <div className="cleaner-queue-list">
-                  <span className="eyebrow">SIRADAKİLER</span>
-                  {cleanupQueue.slice(1, 5).map((item) => (
-                    <button type="button" key={item.id} onClick={() => setSelectedItem(item)}>
-                      <ScreenshotPreview item={item} />
-                      <span><strong>{getCleanupReason(item)}</strong><small>{CATEGORY_META[item.category].shortLabel} · {formatBytes(item.size)}</small></span>
-                      <ArrowRight size={15} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="empty-state cleaner-complete"><Check size={28} /><h2>Kuyruk tertemiz</h2><p>Şimdilik karar vermen gereken başka screenshot yok.</p><button className="primary-button" type="button" onClick={() => { setCategory('all'); setView('library'); }}>Galeriye dön</button></div>
-            )}
-          </section>
-        )}
-
-        {view === 'groups' && (
-          <section className="page-content groups-page">
-            <div className="groups-summary">
-              <div><span className="eyebrow">OTOMATİK DÜZEN</span><h2>{Object.values(CATEGORY_META).filter((meta) => activeItems.some((item) => CATEGORY_META[item.category] === meta)).length} anlamlı grup</h2><p>Klasör açmadın. İsim vermedin. Yalnızca screenshot aldın.</p></div>
-              <div className="group-orbit" aria-hidden="true"><span>SS</span>{(['shopping','food','places','chats'] as Category[]).map((id, index) => <i key={id} style={{ background: CATEGORY_META[id].color, '--orbit-index': index } as React.CSSProperties} />)}</div>
-            </div>
-            <div className="group-list">
-              {(Object.keys(CATEGORY_META) as Category[]).map((categoryId) => {
-                const groupedItems = activeItems.filter((item) => item.category === categoryId);
-                if (groupedItems.length === 0) return null;
-                return (
-                  <article className="group-row" key={categoryId}>
-                    <button className="group-copy" type="button" onClick={() => { setCategory(categoryId); setView('library'); }}>
-                      <span className="group-icon" style={{ background: CATEGORY_META[categoryId].color }}><FolderOpen size={20} /></span>
-                      <span><strong>{CATEGORY_META[categoryId].label}</strong><small>{groupedItems.length} screenshot</small></span>
-                    </button>
-                    <div className="group-thumbnails">{groupedItems.slice(0, 4).map((item) => <button type="button" key={item.id} onClick={() => setSelectedItem(item)}><ScreenshotPreview item={item} /></button>)}</div>
-                    <button className="group-open" type="button" onClick={() => { setCategory(categoryId); setView('library'); }}>Grubu aç <ArrowRight size={15} /></button>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {view === 'privacy' && (
-          <section className="page-content privacy-page">
-            <div className="privacy-hero">
-              <div className="privacy-lock"><LockKeyhole size={36} /></div>
-              <div><span className="eyebrow">VERİ AKIŞI</span><h2>Screenshot’ların burada kalır.</h2><p>Analiz, benzerlik hesabı ve arama bu cihazda gerçekleşir. SS TARIFF sunucusuna görsel veya çıkarılan metin gönderilmez.</p></div>
-              <div className="privacy-live"><span /><strong>KORUMA AKTİF</strong><small>Son kontrol: şimdi</small></div>
-            </div>
-            <div className="privacy-grid">
-              <article className="privacy-flow">
-                <div className="section-title-row"><div><h2>Bir screenshot’ın yolu</h2><span>Şeffaf veri akışı</span></div><Info size={18} /></div>
-                <div className="flow-step"><span><Upload size={18} /></span><div><strong>1. Sen seçersin</strong><small>Uygulama galerinin tamamını kendiliğinden okuyamaz.</small></div><b>İZİNLİ</b></div>
-                <div className="flow-line" />
-                <div className="flow-step"><span><HardDrive size={18} /></span><div><strong>2. Cihazında analiz edilir</strong><small>Görsel hash’i ve sınıflandırma yerel olarak hesaplanır.</small></div><b>YEREL</b></div>
-                <div className="flow-line" />
-                <div className="flow-step"><span><HardDrive size={18} /></span><div><strong>3. Tarayıcıda saklanır</strong><small>Dosya ve metadata IndexedDB alanından çıkmaz.</small></div><b>ÖZEL</b></div>
-                <div className="blocked-cloud"><X size={18} /><div><strong>Buluta upload</strong><small>Bu sürümde böyle bir veri yolu yok.</small></div><b>ENGELLİ</b></div>
-              </article>
-              <div className="privacy-controls">
-                <article>
-                  <div className="control-icon green"><ShieldCheck size={20} /></div>
-                  <div><strong>Yerel analiz</strong><small>Dosyalar cihazında işlenir</small></div>
-                  <span className="toggle on" aria-label="Yerel analiz açık"><i /></span>
-                </article>
-                <article>
-                  <div className="control-icon blue"><Download size={20} /></div>
-                  <div><strong>Model güncellemeleri</strong><small>Yalnızca model dosyası indirilir</small></div>
-                  <span className="toggle on" aria-label="Model güncellemeleri açık"><i /></span>
-                </article>
-                <article>
-                  <div className="control-icon yellow"><HardDrive size={20} /></div>
-                  <div><strong>Yerel kullanım</strong><small>{items.filter((item) => !item.id.startsWith('demo-')).length} gerçek dosya · {formatBytes(items.filter((item) => !item.id.startsWith('demo-')).reduce((sum, item) => sum + item.size, 0))}</small></div>
-                  <button type="button" onClick={() => void resetPrivateLibrary()}>Verileri sil</button>
-                </article>
-                <div className="privacy-proof"><span>BUGÜN</span><strong>0</strong><p>Screenshot veya OCR metni ağ üzerinden gönderildi.</p></div>
-              </div>
-            </div>
-          </section>
-        )}
       </main>
 
-      <nav className="mobile-nav" aria-label="Mobil menü">
-        {NAV_ITEMS.map((navItem) => {
-          const Icon = navItem.icon;
-          return <button type="button" key={navItem.id} className={view === navItem.id ? 'active' : ''} onClick={() => { if (navItem.id === 'library') { setCategory('all'); setQuery(''); } setView(navItem.id); }}><Icon size={19} /><span>{navItem.label}</span></button>;
-        })}
-      </nav>
-
       {selectedItem && (
-        <div className="drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedItem(null); }}>
+        <div className="drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setSelectedItem(null); setSelectedFromArchive(false); } }}>
           <aside className="detail-drawer" aria-label="Screenshot detayı">
-            <div className="drawer-head"><label className="category-editor"><span className="category-dot" style={{ background: CATEGORY_META[selectedItem.category].color }} /><select value={selectedItem.category} aria-label="Kategori" onChange={(event) => void changeItemCategory(selectedItem, event.target.value as Category)}>{(Object.keys(CATEGORY_META) as Category[]).map((categoryId) => <option key={categoryId} value={categoryId}>{CATEGORY_META[categoryId].label}</option>)}</select></label><IconButton label="Detayı kapat" onClick={() => setSelectedItem(null)}><X size={18} /></IconButton></div>
+            <div className="drawer-head"><label className="category-editor"><span className="category-dot" style={{ background: CATEGORY_META[selectedItem.category].color }} /><select value={selectedItem.category} aria-label="Kategori" onChange={(event) => void changeItemCategory(selectedItem, event.target.value as Category)}>{(Object.keys(CATEGORY_META) as Category[]).map((categoryId) => <option key={categoryId} value={categoryId}>{CATEGORY_META[categoryId].label}</option>)}</select></label><IconButton label="Detayı kapat" onClick={() => { setSelectedItem(null); setSelectedFromArchive(false); }}><X size={18} /></IconButton></div>
             <ScreenshotPreview item={selectedItem} className="drawer-preview" />
-            <div className="drawer-title"><div><span>{formatRelativeDate(selectedItem.createdAt)}</span><h2>{selectedItem.name}</h2></div><IconButton label="Diğer seçenekler"><MoreHorizontal size={18} /></IconButton></div>
-            <div className="analysis-block"><div><span>YEREL ANALİZ</span><b>%{Math.round(selectedItem.confidence * 100)} güven</b></div><ConfidenceBar value={selectedItem.confidence} /><p>{selectedItem.extractedText || 'Bu görselde henüz metin bulunmadı.'}</p></div>
+            <div className="drawer-title"><div><span>{formatRelativeDate(selectedItem.createdAt)}</span><h2>{selectedItem.name}</h2></div></div>
+            <div className="analysis-block"><div><span>Görüntüde bulunan metin</span><b>%{Math.round(selectedItem.confidence * 100)}</b></div><ConfidenceBar value={selectedItem.confidence} /><p>{selectedItem.extractedText || 'Metin bulunamadı.'}</p></div>
             <div className="tag-list">{selectedItem.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div>
             <dl className="file-facts"><div><dt>Boyut</dt><dd>{selectedItem.width} × {selectedItem.height}</dd></div><div><dt>Dosya</dt><dd>{formatBytes(selectedItem.size)}</dd></div><div><dt>İşleme</dt><dd>{selectedItem.analyzer === 'demo' ? 'Demo analizi' : 'Cihaz üzerinde'}</dd></div></dl>
             <div className="drawer-actions">
-              {selectedItem.status === 'trash' ? <button className="primary-button" type="button" onClick={() => void updateStatus(selectedItem, 'active')}><ArchiveRestore size={17} /> Geri yükle</button> : <button className="secondary-button danger-text" type="button" onClick={() => void sendToTrash(selectedItem)}><Trash2 size={17} /> Temizlemeye gönder</button>}
-              {selectedItem.native && <button className="secondary-button" type="button" onClick={() => void dismissArchivePick(selectedItem)}>Yakında gösterme</button>}
+              {selectedItem.status === 'trash' ? <button className="primary-button" type="button" onClick={() => void updateStatus(selectedItem, 'active')}><ArchiveRestore size={17} /> Geri yükle</button> : <button className="secondary-button danger-text" type="button" onClick={() => void sendToTrash(selectedItem)}><Trash2 size={17} /> Çöpe taşı</button>}
+              {selectedItem.native && selectedFromArchive && <button className="secondary-button" type="button" onClick={() => void dismissArchivePick(selectedItem)}>Yakında gösterme</button>}
             </div>
           </aside>
         </div>
       )}
 
-      {settingsOpen && NATIVE_RUNTIME && settingsDraft && (
+      {settingsOpen && (
         <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
           <div className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div className="modal-head">
-              <div><span className="modal-icon"><Settings2 size={20} /></span><div><h2 id="settings-title">SS TARIFF</h2></div></div>
+              <div><div><h2 id="settings-title">Ayarlar</h2></div></div>
               <IconButton label="Pencereyi kapat" onClick={() => setSettingsOpen(false)}><X size={18} /></IconButton>
             </div>
             <div className="settings-tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={settingsTab === 'settings'} className={settingsTab === 'settings' ? 'active' : ''} onClick={() => setSettingsTab('settings')}><Settings2 size={16} /> Ayarlar</button>
-              <button type="button" role="tab" aria-selected={settingsTab === 'report'} className={settingsTab === 'report' ? 'active' : ''} onClick={() => setSettingsTab('report')}><BarChart3 size={16} /> Rapor</button>
+              <button type="button" role="tab" aria-selected={settingsTab === 'appearance'} className={settingsTab === 'appearance' ? 'active' : ''} onClick={() => setSettingsTab('appearance')}><Palette size={17} /> Görünüm</button>
+              {NATIVE_RUNTIME && <button type="button" role="tab" aria-selected={settingsTab === 'settings'} className={settingsTab === 'settings' ? 'active' : ''} onClick={() => setSettingsTab('settings')}><Settings2 size={17} /> Tarama</button>}
+              {NATIVE_RUNTIME && <button type="button" role="tab" aria-selected={settingsTab === 'report'} className={settingsTab === 'report' ? 'active' : ''} onClick={() => setSettingsTab('report')}><BarChart3 size={17} /> Rapor</button>}
             </div>
 
-            {settingsTab === 'settings' ? (
+            {settingsTab === 'appearance' ? (
+              <div className="appearance-settings">
+                <div className="background-mode" role="group" aria-label="Arka plan türü">
+                  <button type="button" className={appearanceDraft.backgroundMode === 'curated' ? 'active' : ''} onClick={() => setAppearanceDraft({ ...appearanceDraft, backgroundMode: 'curated' })}><Image size={18} /> Yerleşik</button>
+                  <button type="button" className={appearanceDraft.backgroundMode === 'custom' ? 'active' : ''} onClick={() => { if (draftCustomBackgroundUrl) setAppearanceDraft({ ...appearanceDraft, backgroundMode: 'custom' }); else void chooseCustomBackground(); }}><Upload size={18} /> Kendi görselim</button>
+                  <button type="button" className={appearanceDraft.backgroundMode === 'solid' ? 'active' : ''} onClick={() => setAppearanceDraft({ ...appearanceDraft, backgroundMode: 'solid' })}><Palette size={18} /> Düz renk</button>
+                </div>
+
+                {appearanceDraft.backgroundMode === 'curated' && (
+                  <div className="wallpaper-grid">
+                    {CURATED_WALLPAPERS.map((wallpaper) => (
+                      <button
+                        type="button"
+                        key={wallpaper.id}
+                        className={appearanceDraft.backgroundId === wallpaper.id ? 'active' : ''}
+                        onClick={() => setAppearanceDraft({ ...appearanceDraft, backgroundId: wallpaper.id })}
+                        aria-label={`${wallpaper.name} arka planını seç`}
+                      >
+                        <img src={wallpaper.src} alt="" />
+                        <span>{wallpaper.name}</span>
+                        {appearanceDraft.backgroundId === wallpaper.id && <Check size={18} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {appearanceDraft.backgroundMode === 'custom' && (
+                  <div className="custom-background-setting">
+                    {draftCustomBackgroundUrl ? <img src={draftCustomBackgroundUrl} alt="Seçili arka plan" /> : <div className="custom-background-empty"><Image size={28} /></div>}
+                    <button className="secondary-button" type="button" onClick={() => void chooseCustomBackground()}><Upload size={17} /> Görsel seç</button>
+                  </div>
+                )}
+
+                {appearanceDraft.backgroundMode === 'solid' && (
+                  <label className="solid-color-setting">
+                    <span>Arka plan rengi</span>
+                    <input type="color" value={appearanceDraft.solidColor} onChange={(event) => setAppearanceDraft({ ...appearanceDraft, solidColor: event.target.value })} />
+                  </label>
+                )}
+
+                {appearanceDraft.backgroundMode === 'curated' && (
+                  <label className="setting-row appearance-shuffle">
+                    <span><strong>Her açılışta değiştir</strong><small>Aynı arka plan art arda gösterilmez.</small></span>
+                    <input type="checkbox" checked={appearanceDraft.shuffleBackgrounds} onChange={(event) => setAppearanceDraft({ ...appearanceDraft, shuffleBackgrounds: event.target.checked })} />
+                  </label>
+                )}
+                <div className="settings-actions"><button className="secondary-button" type="button" onClick={() => setSettingsOpen(false)}>Vazgeç</button><button className="primary-button" type="button" onClick={() => void persistSettings()}>Kaydet</button></div>
+              </div>
+            ) : settingsTab === 'settings' && settingsDraft ? (
               <div className="settings-body">
                 <div className="source-setting">
                   <div><span>SCREENSHOT KLASÖRÜ</span><strong title={settingsDraft.sourceFolder}>{settingsDraft.sourceFolder ?? 'Seçilmedi'}</strong></div>
@@ -960,10 +918,9 @@ function App() {
                     {settingsDraft.scheduleTimes.length < 4 && <button type="button" onClick={() => setSettingsDraft({ ...settingsDraft, scheduleTimes: [...settingsDraft.scheduleTimes, '18:00'] })}><Plus size={15} /> Saat ekle</button>}
                   </div>
                 </div>
-                <div className="local-engine-row"><ShieldCheck size={18} /><span><strong>Private AI hazır</strong><small>Windows OCR, görsel sinyaller ve semantik indeks cihazında çalışır.</small></span><b>YEREL</b></div>
-                <div className="settings-actions"><button className="secondary-button" type="button" onClick={() => setSettingsOpen(false)}>Vazgeç</button><button className="primary-button" type="button" onClick={() => void persistNativeSettings()}>Kaydet</button></div>
+                <div className="settings-actions"><button className="secondary-button" type="button" onClick={() => setSettingsOpen(false)}>Vazgeç</button><button className="primary-button" type="button" onClick={() => void persistSettings()}>Kaydet</button></div>
               </div>
-            ) : (
+            ) : settingsTab === 'report' ? (
               <div className="report-body">
                 <div className="report-period"><button type="button" className={reportDays === 7 ? 'active' : ''} onClick={() => setReportDays(7)}>7 gün</button><button type="button" className={reportDays === 30 ? 'active' : ''} onClick={() => setReportDays(30)}>30 gün</button></div>
                 {periodReport ? (
@@ -975,7 +932,7 @@ function App() {
                   </>
                 ) : <div className="report-loading"><RefreshCw className="spin" size={21} /></div>}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -996,7 +953,8 @@ function App() {
         </div>
       )}
 
-      <input ref={fileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={handleFileInput} />
+      <input ref={fileInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple tabIndex={-1} aria-hidden="true" onChange={handleFileInput} />
+      <input ref={backgroundInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" tabIndex={-1} aria-hidden="true" onChange={(event) => void handleBackgroundInput(event)} />
 
       {availableUpdate && <div className="update-toast" role="status"><Download size={17} /><span>v{availableUpdate.version} hazır</span><button type="button" disabled={updateInstalling} onClick={() => void applyAvailableUpdate()}>{updateInstalling ? 'Kuruluyor' : 'Güncelle'}</button><IconButton label="Güncellemeyi kapat" onClick={() => setAvailableUpdate(null)}><X size={15} /></IconButton></div>}
       {toast && <div className="toast" role="status"><Check size={17} /><span>{toast.message}</span>{toast.undoId && <button type="button" onClick={() => void undoTrash(toast.undoId!)}><RotateCcw size={14} /> Geri al</button>}</div>}
