@@ -4,7 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use chrono::Local;
+use chrono::{Datelike, Local, Timelike, Weekday};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
@@ -149,6 +149,7 @@ fn start_scheduler(app: AppHandle, state: AppState) {
             continue;
         };
         let now = Local::now();
+        maybe_publish_period_report(&app, &state, now);
         let local_time = now.format("%H:%M").to_string();
         if !settings
             .schedule_times
@@ -171,6 +172,66 @@ fn start_scheduler(app: AppHandle, state: AppState) {
             }
         }
     });
+}
+
+fn maybe_publish_period_report(app: &AppHandle, state: &AppState, now: chrono::DateTime<Local>) {
+    if now.hour() < 9 {
+        return;
+    }
+    let report = if now.day() == 1 {
+        Some(("monthly_report_slot", 30_u32, "Aylık özet"))
+    } else if now.weekday() == Weekday::Mon {
+        Some(("weekly_report_slot", 7_u32, "Haftalık özet"))
+    } else {
+        None
+    };
+    let Some((setting_key, days, title)) = report else {
+        return;
+    };
+    let slot = now.format("%Y-%m-%d").to_string();
+    if state
+        .database
+        .get_setting(setting_key)
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some(slot.as_str())
+    {
+        return;
+    }
+    let settings = match state.database.load_settings() {
+        Ok(settings) if settings.notifications_enabled => settings,
+        _ => return,
+    };
+    let Ok(report) = state.database.period_report(days) else {
+        return;
+    };
+    let _ = app.emit("native-period-report", &report);
+    let _ = app
+        .notification()
+        .builder()
+        .title(format!("SS TARIFF · {title}"))
+        .body(format!(
+            "{} yeni kayıt, {} temizleme kararı, {} kazanım.",
+            report.added,
+            report.queued_for_cleanup,
+            format_bytes(report.reclaimed_bytes)
+        ))
+        .show();
+    let _ = state.database.set_setting(setting_key, &slot);
+    drop(settings);
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 fn configured_source(state: &AppState) -> Option<PathBuf> {
@@ -226,5 +287,11 @@ mod tests {
         assert!(services.claim_schedule_slot("2026-09-02-12:00".into()));
         assert!(!services.claim_schedule_slot("2026-09-02-12:00".into()));
         assert!(services.claim_schedule_slot("2026-09-02-20:00".into()));
+    }
+
+    #[test]
+    fn formats_report_storage_without_rounding_to_zero() {
+        assert_eq!(format_bytes(1536), "1.5 KB");
+        assert_eq!(format_bytes(2_097_152), "2.0 MB");
     }
 }

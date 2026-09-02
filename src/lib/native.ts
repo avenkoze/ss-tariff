@@ -68,6 +68,33 @@ export interface NativeScanSummary {
   errors: string[];
 }
 
+export interface NativePeriodReport {
+  periodDays: number;
+  from: string;
+  to: string;
+  added: number;
+  kept: number;
+  queuedForCleanup: number;
+  deleted: number;
+  reclaimedBytes: number;
+  junkCandidates: number;
+  duplicateCandidates: number;
+  resurfaced: number;
+  categories: Array<{ category: string; count: number }>;
+}
+
+interface NativeResurfaceCandidateDto {
+  item: NativeAssetDto;
+  reason: string;
+  score: number;
+}
+
+export interface NativeResurfaceCandidate {
+  item: ScreenshotItem;
+  reason: string;
+  score: number;
+}
+
 interface SemanticResultDto {
   item: NativeAssetDto;
   score: number;
@@ -121,6 +148,10 @@ export function updateNativeStatus(id: string, status: ItemStatus): Promise<void
   return invoke('update_native_status', { id, status });
 }
 
+export function updateNativeCategory(id: string, category: Category): Promise<void> {
+  return invoke('update_native_category', { id, category });
+}
+
 export function moveNativeToSystemTrash(id: string): Promise<void> {
   return invoke('move_native_to_system_trash', { id, confirmed: true });
 }
@@ -132,6 +163,17 @@ export async function searchNativeLibrary(query: string, limit = 100): Promise<S
 
 export function recordNativeResurface(id: string, response?: string): Promise<void> {
   return invoke('record_resurface_response', { id, response });
+}
+
+export function getNativePeriodReport(days: 7 | 30): Promise<NativePeriodReport> {
+  return invoke('get_period_report', { days });
+}
+
+export async function getNativeResurfaceCandidates(
+  limit = 3,
+): Promise<NativeResurfaceCandidate[]> {
+  const candidates = await invoke<NativeResurfaceCandidateDto[]>('get_resurface_candidates', { limit });
+  return candidates.map((candidate) => ({ ...candidate, item: mapNativeAsset(candidate.item) }));
 }
 
 export function onNativeLibraryChanged(

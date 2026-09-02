@@ -116,3 +116,35 @@ pub struct AppSnapshot {
     pub database_path: String,
     pub platform: String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryCount {
+    pub category: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeriodReport {
+    pub period_days: u32,
+    pub from: String,
+    pub to: String,
+    pub added: u64,
+    pub kept: u64,
+    pub queued_for_cleanup: u64,
+    pub deleted: u64,
+    pub reclaimed_bytes: u64,
+    pub junk_candidates: u64,
+    pub duplicate_candidates: u64,
+    pub resurfaced: u64,
+    pub categories: Vec<CategoryCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResurfaceCandidate {
+    pub item: NativeAsset,
+    pub reason: String,
+    pub score: f64,
+}

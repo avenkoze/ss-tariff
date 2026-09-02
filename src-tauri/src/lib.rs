@@ -89,9 +89,12 @@ pub fn run() {
             commands::scan_selected_folder,
             commands::save_native_settings,
             commands::update_native_status,
+            commands::update_native_category,
             commands::move_native_to_system_trash,
             commands::semantic_search,
             commands::record_resurface_response,
+            commands::get_period_report,
+            commands::get_resurface_candidates,
         ])
         .on_window_event(|window, event| {
             #[cfg(desktop)]

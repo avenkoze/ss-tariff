@@ -1,15 +1,17 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use crate::analysis::ANALYSIS_VERSION;
 use crate::models::{
-    NativeAnalysis, NativeAsset, NativeSettings, SourceCandidate, VisualFingerprint,
+    CategoryCount, NativeAnalysis, NativeAsset, NativeSettings, PeriodReport, ResurfaceCandidate,
+    SourceCandidate, VisualFingerprint,
 };
 
 const MIGRATION_0001: &str = include_str!("../migrations/0001_init.sql");
+const MIGRATION_0002: &str = include_str!("../migrations/0002_memory_reports.sql");
 
 #[derive(Clone)]
 pub struct Database {
@@ -43,6 +45,9 @@ impl Database {
         let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if version < 1 {
             connection.execute_batch(MIGRATION_0001)?;
+        }
+        if version < 2 {
+            connection.execute_batch(MIGRATION_0002)?;
         }
         Ok(())
     }
@@ -312,6 +317,225 @@ impl Database {
     )?;
         Ok(())
     }
+
+    pub fn update_category(&self, id: &str, category: &str) -> Result<()> {
+        let mut connection = self.connect()?;
+        let transaction = connection.transaction()?;
+        let previous: Option<String> = transaction
+            .query_row(
+                "SELECT category FROM analyses WHERE asset_id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        transaction.execute(
+            "UPDATE analyses SET category = ?1, confidence = 1 WHERE asset_id = ?2",
+            params![category, id],
+        )?;
+        transaction.execute("DELETE FROM collection_items WHERE asset_id = ?1", [id])?;
+        transaction.execute(
+            "INSERT INTO collection_items (collection_id, asset_id, confidence, source)
+             VALUES (?1, ?2, 1, 'user')",
+            params![category, id],
+        )?;
+        record_action(
+            &transaction,
+            Some(id),
+            "category",
+            previous.as_deref(),
+            Some(category),
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn period_report(&self, period_days: u32) -> Result<PeriodReport> {
+        let days = period_days.clamp(1, 366);
+        let to = Utc::now();
+        let from = to - Duration::days(days as i64);
+        let from_text = from.to_rfc3339();
+        let connection = self.connect()?;
+
+        let added = count_query(
+            &connection,
+            "SELECT COUNT(*) FROM assets WHERE added_at >= ?1",
+            &from_text,
+        )?;
+        let kept = count_query(
+            &connection,
+            "SELECT COUNT(*) FROM actions WHERE action = 'status' AND next_value = 'kept' AND created_at >= ?1",
+            &from_text,
+        )?;
+        let queued_for_cleanup = count_query(
+            &connection,
+            "SELECT COUNT(*) FROM actions WHERE action = 'status' AND next_value = 'trash' AND created_at >= ?1",
+            &from_text,
+        )?;
+        let deleted = count_query(
+            &connection,
+            "SELECT COUNT(*) FROM assets WHERE deleted_at >= ?1",
+            &from_text,
+        )?;
+        let reclaimed_bytes: i64 = connection.query_row(
+            "SELECT COALESCE(SUM(size), 0) FROM assets WHERE deleted_at >= ?1",
+            [&from_text],
+            |row| row.get(0),
+        )?;
+        let reclaimed_bytes = reclaimed_bytes.max(0) as u64;
+        let junk_candidates = count_query(
+            &connection,
+            "SELECT COUNT(*) FROM analyses n JOIN assets a ON a.id = n.asset_id
+             WHERE n.category = 'junk' AND a.added_at >= ?1 AND a.status != 'deleted'",
+            &from_text,
+        )?;
+        let duplicate_candidates = count_query(
+            &connection,
+            "SELECT COUNT(*) FROM analyses n JOIN assets a ON a.id = n.asset_id
+             WHERE n.duplicate_group IS NOT NULL AND a.added_at >= ?1 AND a.status != 'deleted'",
+            &from_text,
+        )?;
+        let resurfaced = count_query(
+            &connection,
+            "SELECT COUNT(*) FROM surface_history WHERE shown_at >= ?1",
+            &from_text,
+        )?;
+        let mut statement = connection.prepare(
+            "SELECT n.category, COUNT(*)
+             FROM analyses n JOIN assets a ON a.id = n.asset_id
+             WHERE a.added_at >= ?1 AND a.status != 'deleted'
+             GROUP BY n.category ORDER BY COUNT(*) DESC",
+        )?;
+        let categories = statement
+            .query_map([&from_text], |row| {
+                Ok(CategoryCount {
+                    category: row.get(0)?,
+                    count: row.get::<_, i64>(1)?.max(0) as u64,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        Ok(PeriodReport {
+            period_days: days,
+            from: from_text,
+            to: to.to_rfc3339(),
+            added,
+            kept,
+            queued_for_cleanup,
+            deleted,
+            reclaimed_bytes,
+            junk_candidates,
+            duplicate_candidates,
+            resurfaced,
+            categories,
+        })
+    }
+
+    pub fn resurface_candidates(&self, limit: usize) -> Result<Vec<ResurfaceCandidate>> {
+        use std::collections::HashMap;
+
+        let connection = self.connect()?;
+        let mut category_actions = HashMap::<String, (u64, u64)>::new();
+        let mut action_statement = connection.prepare(
+            "SELECT n.category,
+                    SUM(CASE WHEN x.next_value = 'kept' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN x.next_value IN ('trash', 'deleted') THEN 1 ELSE 0 END)
+             FROM actions x JOIN analyses n ON n.asset_id = x.asset_id
+             WHERE x.action IN ('status', 'system-trash') GROUP BY n.category",
+        )?;
+        for row in action_statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?.max(0) as u64,
+                row.get::<_, i64>(2)?.max(0) as u64,
+            ))
+        })? {
+            let (category, kept, removed) = row?;
+            category_actions.insert(category, (kept, removed));
+        }
+
+        let mut surfaces = HashMap::<String, String>::new();
+        let mut surface_statement = connection
+            .prepare("SELECT asset_id, MAX(shown_at) FROM surface_history GROUP BY asset_id")?;
+        for row in surface_statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })? {
+            let (id, shown_at) = row?;
+            surfaces.insert(id, shown_at);
+        }
+        drop(surface_statement);
+        drop(action_statement);
+        drop(connection);
+
+        let now = Utc::now();
+        let day_seed = now.format("%Y-%m-%d").to_string();
+        let mut candidates = self
+            .list_assets()?
+            .into_iter()
+            .filter(|item| matches!(item.status.as_str(), "active" | "kept"))
+            .filter_map(|item| {
+                let created = chrono::DateTime::parse_from_rfc3339(&item.created_at).ok()?;
+                let age_days = now
+                    .signed_duration_since(created.with_timezone(&Utc))
+                    .num_days();
+                if age_days < 7 {
+                    return None;
+                }
+                let (kept, removed) = category_actions
+                    .get(&item.category)
+                    .copied()
+                    .unwrap_or_default();
+                let preference = (kept as f64 + 1.0) / (kept + removed + 2) as f64;
+                let shown_penalty = surfaces
+                    .get(&item.id)
+                    .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                    .map(|shown| {
+                        let elapsed = now
+                            .signed_duration_since(shown.with_timezone(&Utc))
+                            .num_days();
+                        if elapsed < 14 {
+                            80.0
+                        } else {
+                            0.0
+                        }
+                    })
+                    .unwrap_or(0.0);
+                let jitter = stable_daily_jitter(&day_seed, &item.id);
+                let score =
+                    age_days.min(365) as f64 * 0.18 + preference * 20.0 + jitter - shown_penalty;
+                let reason = if item.status == "kept" {
+                    "Daha önce saklamayı seçmiştin".to_string()
+                } else if preference > 0.6 {
+                    "Sık sakladığın bir kategoriden".to_string()
+                } else {
+                    format!("{} gün önce kaydetmiştin", age_days)
+                };
+                Some(ResurfaceCandidate {
+                    item,
+                    reason,
+                    score,
+                })
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by(|first, second| second.score.total_cmp(&first.score));
+        candidates.truncate(limit.clamp(1, 20));
+        Ok(candidates)
+    }
+}
+
+fn count_query(connection: &Connection, sql: &str, from: &str) -> Result<u64> {
+    connection
+        .query_row(sql, [from], |row| row.get::<_, i64>(0))
+        .map(|value| value.max(0) as u64)
+        .map_err(Into::into)
+}
+
+fn stable_daily_jitter(day: &str, id: &str) -> f64 {
+    let mut value = 1469598103934665603_u64;
+    for byte in day.bytes().chain(id.bytes()) {
+        value ^= byte as u64;
+        value = value.wrapping_mul(1099511628211);
+    }
+    (value % 1000) as f64 / 100.0
 }
 
 fn find_duplicate_group(connection: &Connection, hash: &str) -> Result<Option<String>> {
@@ -434,6 +658,10 @@ mod tests {
         database.migrate().unwrap();
 
         let connection = database.connect().unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
         for table in [
             "assets",
             "analyses",

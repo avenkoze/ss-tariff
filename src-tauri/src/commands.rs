@@ -7,7 +7,9 @@ use tauri::{AppHandle, State};
 
 use crate::analysis::{cosine_similarity, embed_text};
 use crate::db::Database;
-use crate::models::{AppSnapshot, NativeAsset, NativeSettings, ScanSummary};
+use crate::models::{
+    AppSnapshot, NativeAsset, NativeSettings, PeriodReport, ResurfaceCandidate, ScanSummary,
+};
 use crate::scanner::discover_default_source;
 use crate::services::{self, RuntimeServices};
 
@@ -124,6 +126,33 @@ pub fn update_native_status(
 }
 
 #[tauri::command]
+pub fn update_native_category(
+    state: State<'_, AppState>,
+    id: String,
+    category: String,
+) -> Result<(), String> {
+    if ![
+        "shopping",
+        "food",
+        "places",
+        "chats",
+        "ideas",
+        "documents",
+        "social",
+        "junk",
+        "other",
+    ]
+    .contains(&category.as_str())
+    {
+        return Err("Geçersiz kategori.".into());
+    }
+    state
+        .database
+        .update_category(&id, &category)
+        .map_err(display_error)
+}
+
+#[tauri::command]
 pub fn move_native_to_system_trash(
     state: State<'_, AppState>,
     id: String,
@@ -191,6 +220,28 @@ pub fn record_resurface_response(
     state
         .database
         .record_surface(&id, "recent-archive", response.as_deref())
+        .map_err(display_error)
+}
+
+#[tauri::command]
+pub fn get_period_report(
+    state: State<'_, AppState>,
+    days: Option<u32>,
+) -> Result<PeriodReport, String> {
+    state
+        .database
+        .period_report(days.unwrap_or(7))
+        .map_err(display_error)
+}
+
+#[tauri::command]
+pub fn get_resurface_candidates(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<Vec<ResurfaceCandidate>, String> {
+    state
+        .database
+        .resurface_candidates(limit.unwrap_or(3))
         .map_err(display_error)
 }
 

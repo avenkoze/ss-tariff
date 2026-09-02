@@ -2,6 +2,7 @@ import {
   ArchiveRestore,
   ArrowLeft,
   ArrowRight,
+  BarChart3,
   Check,
   CircleHelp,
   Clock3,
@@ -24,6 +25,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Settings2,
   ShieldCheck,
   ShoppingBag,
   Trash2,
@@ -51,6 +53,8 @@ import { ANALYSIS_VERSION, analyzeFile, findSimilarGroup } from './lib/analyzer'
 import { clearLocalItems, deleteLocalItem, loadLocalItems, saveLocalItem } from './lib/database';
 import {
   getNativeSnapshot,
+  getNativePeriodReport,
+  getNativeResurfaceCandidates,
   isNativeRuntime,
   moveNativeToSystemTrash,
   onNativeLibraryChanged,
@@ -59,7 +63,11 @@ import {
   scanNativeLibrary,
   searchNativeLibrary,
   selectAndScanFolder,
+  saveNativeSettings,
+  updateNativeCategory,
   updateNativeStatus,
+  type NativePeriodReport,
+  type NativeResurfaceCandidate,
   type NativeSettings,
 } from './lib/native';
 import {
@@ -217,6 +225,12 @@ function App() {
   const [lastRefreshAt, setLastRefreshAt] = useState(() => new Date());
   const [surfaceHistory, setSurfaceHistory] = useState<SurfaceHistory>(loadSurfaceHistory);
   const [nativeSettings, setNativeSettings] = useState<NativeSettings | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<NativeSettings | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'settings' | 'report'>('settings');
+  const [reportDays, setReportDays] = useState<7 | 30>(7);
+  const [periodReport, setPeriodReport] = useState<NativePeriodReport | null>(null);
+  const [nativeResurface, setNativeResurface] = useState<NativeResurfaceCandidate[]>([]);
   const [nativeSearchItems, setNativeSearchItems] = useState<ScreenshotItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(NATIVE_RUNTIME);
   const [scanning, setScanning] = useState(false);
@@ -225,11 +239,14 @@ function App() {
   useEffect(() => {
     let active = true;
     if (NATIVE_RUNTIME) {
-      getNativeSnapshot()
-        .then((snapshot) => {
+      Promise.all([getNativeSnapshot(), getNativeResurfaceCandidates()])
+        .then(([snapshot, resurface]) => {
           if (!active) return;
           setItems(snapshot.assets);
           setNativeSettings(snapshot.settings);
+          setSettingsDraft(snapshot.settings);
+          setNativeResurface(resurface);
+          if (!snapshot.settings.sourceFolder) setSettingsOpen(true);
         })
         .catch((error) => {
           if (active) setToast({ message: error instanceof Error ? error.message : String(error) });
@@ -269,6 +286,22 @@ function App() {
       window.clearTimeout(timer);
     };
   }, [query]);
+
+  useEffect(() => {
+    if (!NATIVE_RUNTIME || !settingsOpen || settingsTab !== 'report') return undefined;
+    let active = true;
+    setPeriodReport(null);
+    getNativePeriodReport(reportDays)
+      .then((report) => {
+        if (active) setPeriodReport(report);
+      })
+      .catch((error) => {
+        if (active) setToast({ message: error instanceof Error ? error.message : String(error) });
+      });
+    return () => {
+      active = false;
+    };
+  }, [settingsOpen, settingsTab, reportDays]);
 
   useEffect(() => {
     if (!NATIVE_RUNTIME) return undefined;
@@ -354,6 +387,7 @@ function App() {
   );
   const archivePicks = useMemo(
     () => {
+      if (NATIVE_RUNTIME) return nativeResurface;
       const recentIds = new Set(recentItems.map((item) => item.id));
       return selectResurfaceItems(
         activeItems.filter((item) => !recentIds.has(item.id)),
@@ -363,13 +397,18 @@ function App() {
         3,
       );
     },
-    [activeItems, lastRefreshAt, recentItems, refreshSalt, surfaceHistory],
+    [activeItems, lastRefreshAt, nativeResurface, recentItems, refreshSalt, surfaceHistory],
   );
 
   async function reloadNativeLibrary() {
-    const snapshot = await getNativeSnapshot();
+    const [snapshot, resurface] = await Promise.all([
+      getNativeSnapshot(),
+      getNativeResurfaceCandidates(),
+    ]);
     setItems(snapshot.assets);
     setNativeSettings(snapshot.settings);
+    setSettingsDraft(snapshot.settings);
+    setNativeResurface(resurface);
     setLastRefreshAt(new Date());
   }
 
@@ -408,6 +447,40 @@ function App() {
     } finally {
       setScanning(false);
     }
+  }
+
+  function openNativeSettings(tab: 'settings' | 'report' = 'settings') {
+    setSettingsDraft(nativeSettings ? { ...nativeSettings, scheduleTimes: [...nativeSettings.scheduleTimes] } : null);
+    setSettingsTab(tab);
+    setSettingsOpen(true);
+  }
+
+  async function persistNativeSettings() {
+    if (!settingsDraft) return;
+    try {
+      await saveNativeSettings(settingsDraft);
+      setNativeSettings(settingsDraft);
+      setSettingsOpen(false);
+      setToast({ message: 'Ayarlar kaydedildi.' });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async function changeItemCategory(item: ScreenshotItem, nextCategory: Category) {
+    if (item.native) await updateNativeCategory(item.id, nextCategory);
+    const updated = { ...item, category: nextCategory, confidence: 1 };
+    setItems((current) => current.map((candidate) => candidate.id === item.id ? updated : candidate));
+    setSelectedItem(updated);
+    if (!item.native && !item.id.startsWith('demo-')) await saveLocalItem(updated);
+    setToast({ message: `${CATEGORY_META[nextCategory].shortLabel} olarak düzeltildi.` });
+  }
+
+  async function dismissArchivePick(item: ScreenshotItem) {
+    if (item.native) await recordNativeResurface(item.id, 'dismissed');
+    setNativeResurface((current) => current.filter((candidate) => candidate.item.id !== item.id));
+    setSelectedItem(null);
+    setToast({ message: 'Bu kayıt yakın zamanda yeniden gösterilmeyecek.' });
   }
 
   function openArchivePick(item: ScreenshotItem) {
@@ -575,7 +648,11 @@ function App() {
           <div className="storage-meter"><span style={{ width: `${Math.min(100, (activeItems.length / 20) * 100)}%` }} /></div>
         </div>
         <div className="private-pill"><ShieldCheck size={16} /><span><strong>Cihazda</strong><small>Ağ aktarımı yok</small></span></div>
-        <button className="help-link" type="button"><CircleHelp size={16} /> Yardım & geri bildirim</button>
+        {NATIVE_RUNTIME ? (
+          <button className="help-link" type="button" onClick={() => openNativeSettings()}><Settings2 size={17} /> Ayarlar</button>
+        ) : (
+          <button className="help-link" type="button"><CircleHelp size={16} /> Yardım & geri bildirim</button>
+        )}
       </aside>
 
       {sidebarOpen && <button className="sidebar-scrim" type="button" aria-label="Menüyü kapat" onClick={() => setSidebarOpen(false)} />}
@@ -614,7 +691,7 @@ function App() {
             <section className="archive-section" aria-labelledby="archive-title">
               <div className="recent-section-head">
                 <h2 id="archive-title">Geçmişten</h2>
-                <IconButton label="Yeni arşiv seçkisi göster" onClick={() => setRefreshSalt((current) => current + 1)}><RefreshCw size={16} /></IconButton>
+                <IconButton label="Yeni arşiv seçkisi göster" onClick={() => { if (NATIVE_RUNTIME) void reloadNativeLibrary(); else setRefreshSalt((current) => current + 1); }}><RefreshCw size={16} /></IconButton>
               </div>
               {archivePicks.length > 0 ? (
                 <div className="archive-picks-grid">
@@ -796,7 +873,7 @@ function App() {
       {selectedItem && (
         <div className="drawer-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedItem(null); }}>
           <aside className="detail-drawer" aria-label="Screenshot detayı">
-            <div className="drawer-head"><div><span className="category-dot" style={{ background: CATEGORY_META[selectedItem.category].color }} /><strong>{CATEGORY_META[selectedItem.category].label}</strong></div><IconButton label="Detayı kapat" onClick={() => setSelectedItem(null)}><X size={18} /></IconButton></div>
+            <div className="drawer-head"><label className="category-editor"><span className="category-dot" style={{ background: CATEGORY_META[selectedItem.category].color }} /><select value={selectedItem.category} aria-label="Kategori" onChange={(event) => void changeItemCategory(selectedItem, event.target.value as Category)}>{(Object.keys(CATEGORY_META) as Category[]).map((categoryId) => <option key={categoryId} value={categoryId}>{CATEGORY_META[categoryId].label}</option>)}</select></label><IconButton label="Detayı kapat" onClick={() => setSelectedItem(null)}><X size={18} /></IconButton></div>
             <ScreenshotPreview item={selectedItem} className="drawer-preview" />
             <div className="drawer-title"><div><span>{formatRelativeDate(selectedItem.createdAt)}</span><h2>{selectedItem.name}</h2></div><IconButton label="Diğer seçenekler"><MoreHorizontal size={18} /></IconButton></div>
             <div className="analysis-block"><div><span>YEREL ANALİZ</span><b>%{Math.round(selectedItem.confidence * 100)} güven</b></div><ConfidenceBar value={selectedItem.confidence} /><p>{selectedItem.extractedText || 'Bu görselde henüz metin bulunmadı.'}</p></div>
@@ -804,8 +881,58 @@ function App() {
             <dl className="file-facts"><div><dt>Boyut</dt><dd>{selectedItem.width} × {selectedItem.height}</dd></div><div><dt>Dosya</dt><dd>{formatBytes(selectedItem.size)}</dd></div><div><dt>İşleme</dt><dd>{selectedItem.analyzer === 'demo' ? 'Demo analizi' : 'Cihaz üzerinde'}</dd></div></dl>
             <div className="drawer-actions">
               {selectedItem.status === 'trash' ? <button className="primary-button" type="button" onClick={() => void updateStatus(selectedItem, 'active')}><ArchiveRestore size={17} /> Geri yükle</button> : <button className="secondary-button danger-text" type="button" onClick={() => void sendToTrash(selectedItem)}><Trash2 size={17} /> Temizlemeye gönder</button>}
+              {selectedItem.native && <button className="secondary-button" type="button" onClick={() => void dismissArchivePick(selectedItem)}>Yakında gösterme</button>}
             </div>
           </aside>
+        </div>
+      )}
+
+      {settingsOpen && NATIVE_RUNTIME && settingsDraft && (
+        <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
+          <div className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div className="modal-head">
+              <div><span className="modal-icon"><Settings2 size={20} /></span><div><h2 id="settings-title">SS TARIFF</h2></div></div>
+              <IconButton label="Pencereyi kapat" onClick={() => setSettingsOpen(false)}><X size={18} /></IconButton>
+            </div>
+            <div className="settings-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={settingsTab === 'settings'} className={settingsTab === 'settings' ? 'active' : ''} onClick={() => setSettingsTab('settings')}><Settings2 size={16} /> Ayarlar</button>
+              <button type="button" role="tab" aria-selected={settingsTab === 'report'} className={settingsTab === 'report' ? 'active' : ''} onClick={() => setSettingsTab('report')}><BarChart3 size={16} /> Rapor</button>
+            </div>
+
+            {settingsTab === 'settings' ? (
+              <div className="settings-body">
+                <div className="source-setting">
+                  <div><span>SCREENSHOT KLASÖRÜ</span><strong title={settingsDraft.sourceFolder}>{settingsDraft.sourceFolder ?? 'Seçilmedi'}</strong></div>
+                  <button className="secondary-button" type="button" onClick={() => void chooseNativeFolder()}><FolderOpen size={16} /> Değiştir</button>
+                </div>
+                <label className="setting-row"><span><strong>Başlangıçta tara</strong><small>Uygulama açıldığında değişen dosyaları bulur.</small></span><input type="checkbox" checked={settingsDraft.scanOnStartup} onChange={(event) => setSettingsDraft({ ...settingsDraft, scanOnStartup: event.target.checked })} /></label>
+                <label className="setting-row"><span><strong>Klasörü izle</strong><small>Yeni screenshot geldiğinde otomatik düzenler.</small></span><input type="checkbox" checked={settingsDraft.watchFolder} onChange={(event) => setSettingsDraft({ ...settingsDraft, watchFolder: event.target.checked })} /></label>
+                <label className="setting-row"><span><strong>Bildirimler</strong><small>Arka planda yeni kayıt işlendiğinde haber verir.</small></span><input type="checkbox" checked={settingsDraft.notificationsEnabled} onChange={(event) => setSettingsDraft({ ...settingsDraft, notificationsEnabled: event.target.checked })} /></label>
+                <div className="schedule-setting">
+                  <div className="setting-label"><strong>Tarama saatleri</strong><small>Cihazın yerel saatine göre.</small></div>
+                  <div className="schedule-times">
+                    {settingsDraft.scheduleTimes.map((time, index) => (
+                      <label key={`${index}-${time}`}><input type="time" value={time} onChange={(event) => setSettingsDraft({ ...settingsDraft, scheduleTimes: settingsDraft.scheduleTimes.map((current, currentIndex) => currentIndex === index ? event.target.value : current) })} /><IconButton label="Saati kaldır" onClick={() => setSettingsDraft({ ...settingsDraft, scheduleTimes: settingsDraft.scheduleTimes.filter((_, currentIndex) => currentIndex !== index) })}><X size={15} /></IconButton></label>
+                    ))}
+                    {settingsDraft.scheduleTimes.length < 4 && <button type="button" onClick={() => setSettingsDraft({ ...settingsDraft, scheduleTimes: [...settingsDraft.scheduleTimes, '18:00'] })}><Plus size={15} /> Saat ekle</button>}
+                  </div>
+                </div>
+                <div className="local-engine-row"><ShieldCheck size={18} /><span><strong>Private AI hazır</strong><small>Windows OCR, görsel sinyaller ve semantik indeks cihazında çalışır.</small></span><b>YEREL</b></div>
+                <div className="settings-actions"><button className="secondary-button" type="button" onClick={() => setSettingsOpen(false)}>Vazgeç</button><button className="primary-button" type="button" onClick={() => void persistNativeSettings()}>Kaydet</button></div>
+              </div>
+            ) : (
+              <div className="report-body">
+                <div className="report-period"><button type="button" className={reportDays === 7 ? 'active' : ''} onClick={() => setReportDays(7)}>7 gün</button><button type="button" className={reportDays === 30 ? 'active' : ''} onClick={() => setReportDays(30)}>30 gün</button></div>
+                {periodReport ? (
+                  <>
+                    <div className="report-stats"><div><strong>{periodReport.added}</strong><span>Yeni</span></div><div><strong>{periodReport.kept}</strong><span>Saklandı</span></div><div><strong>{periodReport.queuedForCleanup}</strong><span>Temizlendi</span></div><div><strong>{formatBytes(periodReport.reclaimedBytes)}</strong><span>Kazanıldı</span></div></div>
+                    <div className="report-detail"><span><b>{periodReport.junkCandidates}</b> çöp adayı</span><span><b>{periodReport.duplicateCandidates}</b> benzer kayıt</span><span><b>{periodReport.resurfaced}</b> hatırlatma</span></div>
+                    <div className="report-categories">{periodReport.categories.map((entry) => { const categoryId = (Object.keys(CATEGORY_META) as Category[]).includes(entry.category as Category) ? entry.category as Category : 'other'; const max = Math.max(...periodReport.categories.map((candidate) => candidate.count), 1); return <div key={entry.category}><span><i style={{ background: CATEGORY_META[categoryId].color }} />{CATEGORY_META[categoryId].shortLabel}</span><b>{entry.count}</b><div><i style={{ width: `${(entry.count / max) * 100}%`, background: CATEGORY_META[categoryId].color }} /></div></div>; })}</div>
+                  </>
+                ) : <div className="report-loading"><RefreshCw className="spin" size={21} /></div>}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

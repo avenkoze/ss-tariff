@@ -230,7 +230,27 @@ mod tests {
 
         let first = scan_folder(&database, &thumbnails, &source, "test").unwrap();
         assert_eq!((first.discovered, first.analyzed, first.skipped), (1, 1, 0));
-        assert_eq!(database.list_assets().unwrap().len(), 1);
+        let asset = database.list_assets().unwrap().pop().unwrap();
+        database.update_category(&asset.id, "shopping").unwrap();
+        database.update_status(&asset.id, "kept").unwrap();
+        database
+            .record_surface(&asset.id, "recent-archive", Some("opened"))
+            .unwrap();
+        let report = database.period_report(7).unwrap();
+        assert_eq!((report.added, report.kept, report.resurfaced), (1, 1, 1));
+
+        let old_date = (Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+        database
+            .connect()
+            .unwrap()
+            .execute(
+                "UPDATE assets SET created_at = ?1 WHERE id = ?2",
+                params![old_date, asset.id],
+            )
+            .unwrap();
+        let resurfaced = database.resurface_candidates(3).unwrap();
+        assert_eq!(resurfaced.len(), 1);
+        assert_eq!(resurfaced[0].item.category, "shopping");
 
         let second = scan_folder(&database, &thumbnails, &source, "test").unwrap();
         assert_eq!(
