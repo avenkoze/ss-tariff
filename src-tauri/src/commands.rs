@@ -126,6 +126,11 @@ pub fn update_native_status(
 }
 
 #[tauri::command]
+pub fn cancel_native_scan(state: State<'_, AppState>) {
+    state.services.cancel_scan();
+}
+
+#[tauri::command]
 pub fn update_native_category(
     state: State<'_, AppState>,
     id: String,

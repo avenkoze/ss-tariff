@@ -53,6 +53,7 @@ import { ANALYSIS_VERSION, analyzeFile, findSimilarGroup } from './lib/analyzer'
 import { clearLocalItems, deleteLocalItem, loadLocalItems, saveLocalItem } from './lib/database';
 import {
   getNativeSnapshot,
+  cancelNativeScan,
   getNativePeriodReport,
   getNativeResurfaceCandidates,
   isNativeRuntime,
@@ -234,6 +235,7 @@ function App() {
   const [nativeSearchItems, setNativeSearchItems] = useState<ScreenshotItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(NATIVE_RUNTIME);
   const [scanning, setScanning] = useState(false);
+  const [galleryLimit, setGalleryLimit] = useState(120);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -286,6 +288,10 @@ function App() {
       window.clearTimeout(timer);
     };
   }, [query]);
+
+  useEffect(() => {
+    setGalleryLimit(120);
+  }, [category, query]);
 
   useEffect(() => {
     if (!NATIVE_RUNTIME || !settingsOpen || settingsTab !== 'report') return undefined;
@@ -357,11 +363,17 @@ function App() {
     () => {
       const source = NATIVE_RUNTIME && query.trim() ? nativeSearchItems : activeItems;
       const textQuery = NATIVE_RUNTIME && query.trim() ? '' : query;
-      return searchItems(source, textQuery, category).sort(
+      const matches = searchItems(source, textQuery, category);
+      if (NATIVE_RUNTIME && query.trim()) return matches;
+      return matches.sort(
         (first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime(),
       );
     },
     [activeItems, nativeSearchItems, query, category],
+  );
+  const renderedVisibleItems = useMemo(
+    () => visibleItems.slice(0, galleryLimit),
+    [visibleItems, galleryLimit],
   );
   const cleanupQueue = useMemo(
     () => {
@@ -419,7 +431,9 @@ function App() {
         const summary = await scanNativeLibrary();
         await reloadNativeLibrary();
         setToast({
-          message: summary.analyzed > 0
+          message: summary.cancelled
+            ? `Tarama durduruldu. ${summary.analyzed} dosya tamamlandı.`
+            : summary.analyzed > 0
             ? `${summary.analyzed} yeni veya değişen screenshot analiz edildi.`
             : 'Klasör güncel.',
         });
@@ -441,12 +455,17 @@ function App() {
       const summary = await selectAndScanFolder();
       if (!summary) return;
       await reloadNativeLibrary();
-      setToast({ message: `${summary.analyzed} screenshot cihazında analiz edildi.` });
+      setToast({ message: summary.cancelled ? `Tarama durduruldu. ${summary.analyzed} dosya tamamlandı.` : `${summary.analyzed} screenshot cihazında analiz edildi.` });
     } catch (error) {
       setToast({ message: error instanceof Error ? error.message : String(error) });
     } finally {
       setScanning(false);
     }
+  }
+
+  async function stopNativeScan() {
+    await cancelNativeScan();
+    setToast({ message: 'Tarama mevcut dosyadan sonra duracak.' });
   }
 
   function openNativeSettings(tab: 'settings' | 'report' = 'settings') {
@@ -665,7 +684,7 @@ function App() {
             {currentCopy.subtitle && <p>{currentCopy.subtitle}</p>}
           </div>
           <div className="topbar-actions">
-            <button className="secondary-button refresh-button" type="button" disabled={scanning} onClick={() => void refreshLibrary()}><RefreshCw className={scanning ? 'spin' : ''} size={16} /><span>{scanning ? 'Taranıyor' : 'Yenile'}</span></button>
+            <button className="secondary-button refresh-button" type="button" onClick={() => { if (scanning && NATIVE_RUNTIME) void stopNativeScan(); else void refreshLibrary(); }}>{scanning ? <X size={16} /> : <RefreshCw size={16} />}<span>{scanning ? 'Durdur' : 'Yenile'}</span></button>
             <button className="primary-button" type="button" disabled={scanning} onClick={() => { if (NATIVE_RUNTIME) void chooseNativeFolder(); else setImportOpen(true); }}><Plus size={17} /> {NATIVE_RUNTIME ? (nativeSettings?.sourceFolder ? 'Klasör' : 'Klasör seç') : 'Screenshot ekle'}</button>
           </div>
         </header>
@@ -752,11 +771,12 @@ function App() {
                 {query && <div className="gallery-results-head"><h3>“{query}”</h3><span>{visibleItems.length} sonuç</span></div>}
                 {visibleItems.length > 0 ? (
                   <div className="library-grid gallery-items-grid">
-                    {visibleItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => setSelectedItem(item)} />)}
+                    {renderedVisibleItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => setSelectedItem(item)} />)}
                   </div>
                 ) : (
                   <div className="empty-state"><Search size={25} /><h2>Sonuç bulunamadı</h2><p>Aramayı kısalt veya kategorilere dön.</p><button className="secondary-button" type="button" onClick={() => { setQuery(''); setCategory('all'); }}>Galeriye dön</button></div>
                 )}
+                {visibleItems.length > renderedVisibleItems.length && <button className="load-more-button" type="button" onClick={() => setGalleryLimit((current) => current + 120)}>Daha fazla ({visibleItems.length - renderedVisibleItems.length})</button>}
               </>
             )}
           </section>

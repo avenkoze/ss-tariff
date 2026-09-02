@@ -66,6 +66,7 @@ export interface NativeScanSummary {
   failed: number;
   completedAt: string;
   errors: string[];
+  cancelled: boolean;
 }
 
 export interface NativePeriodReport {
@@ -138,6 +139,10 @@ export async function selectAndScanFolder(): Promise<NativeScanSummary | undefin
 
 export function scanNativeLibrary(trigger = 'manual'): Promise<NativeScanSummary> {
   return invoke<NativeScanSummary>('scan_configured_folder', { trigger });
+}
+
+export function cancelNativeScan(): Promise<void> {
+  return invoke('cancel_native_scan');
 }
 
 export function saveNativeSettings(settings: NativeSettings): Promise<void> {

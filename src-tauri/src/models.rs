@@ -82,6 +82,7 @@ pub struct ScanSummary {
     pub failed: usize,
     pub completed_at: String,
     pub errors: Vec<String>,
+    pub cancelled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

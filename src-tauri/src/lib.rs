@@ -89,6 +89,7 @@ pub fn run() {
             commands::scan_selected_folder,
             commands::save_native_settings,
             commands::update_native_status,
+            commands::cancel_native_scan,
             commands::update_native_category,
             commands::move_native_to_system_trash,
             commands::semantic_search,

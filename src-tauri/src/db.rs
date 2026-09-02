@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -12,6 +13,7 @@ use crate::models::{
 
 const MIGRATION_0001: &str = include_str!("../migrations/0001_init.sql");
 const MIGRATION_0002: &str = include_str!("../migrations/0002_memory_reports.sql");
+const MIGRATION_0003: &str = include_str!("../migrations/0003_scan_runtime.sql");
 
 #[derive(Clone)]
 pub struct Database {
@@ -49,6 +51,9 @@ impl Database {
         if version < 2 {
             connection.execute_batch(MIGRATION_0002)?;
         }
+        if version < 3 {
+            connection.execute_batch(MIGRATION_0003)?;
+        }
         Ok(())
     }
 
@@ -85,18 +90,21 @@ impl Database {
         self.set_setting("app_settings", &serde_json::to_string(settings)?)
     }
 
-    pub fn is_analysis_current(&self, source_id: &str, identity_token: &str) -> Result<bool> {
+    pub fn analysis_index(&self) -> Result<HashMap<String, (String, u32)>> {
         let connection = self.connect()?;
-        let current = connection
-            .query_row(
-                "SELECT a.identity_token, COALESCE(n.analysis_version, 0)
-         FROM assets a LEFT JOIN analyses n ON n.asset_id = a.id WHERE a.source_id = ?1",
-                [source_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?)),
-            )
-            .optional()?;
-        Ok(current
-            .is_some_and(|(token, version)| token == identity_token && version >= ANALYSIS_VERSION))
+        let mut statement = connection.prepare(
+            "SELECT a.source_id, a.identity_token, COALESCE(n.analysis_version, 0)
+             FROM assets a LEFT JOIN analyses n ON n.asset_id = a.id
+             WHERE a.status != 'deleted'",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                (row.get::<_, String>(1)?, row.get::<_, u32>(2)?),
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<HashMap<_, _>>>()
+            .map_err(Into::into)
     }
 
     pub fn upsert_analysis(
@@ -105,7 +113,11 @@ impl Database {
         analysis: &NativeAnalysis,
     ) -> Result<String> {
         let mut connection = self.connect()?;
-        let duplicate_group = find_duplicate_group(&connection, &analysis.perceptual_hash)?;
+        let duplicate_group = find_duplicate_group(
+            &connection,
+            &analysis.perceptual_hash,
+            analysis.visual_fingerprint.mean_luminance,
+        )?;
         let transaction = connection.transaction()?;
         let now = Utc::now().to_rfc3339();
         let existing_id: Option<String> = transaction
@@ -538,19 +550,28 @@ fn stable_daily_jitter(day: &str, id: &str) -> f64 {
     (value % 1000) as f64 / 100.0
 }
 
-fn find_duplicate_group(connection: &Connection, hash: &str) -> Result<Option<String>> {
+fn find_duplicate_group(
+    connection: &Connection,
+    hash: &str,
+    mean_luminance: f64,
+) -> Result<Option<String>> {
     let mut statement = connection.prepare(
         "SELECT a.id, n.perceptual_hash, n.duplicate_group
      FROM analyses n JOIN assets a ON a.id = n.asset_id
-     WHERE n.perceptual_hash IS NOT NULL AND a.status != 'deleted'",
+     WHERE n.perceptual_hash IS NOT NULL AND a.status != 'deleted'
+       AND n.mean_luminance BETWEEN ?1 AND ?2
+     ORDER BY n.analyzed_at DESC LIMIT 512",
     )?;
-    let candidates = statement.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
-        ))
-    })?;
+    let candidates = statement.query_map(
+        params![mean_luminance - 0.12, mean_luminance + 0.12],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        },
+    )?;
     for candidate in candidates {
         let (id, candidate_hash, group) = candidate?;
         if hamming_distance(hash, &candidate_hash) <= 20 {
@@ -661,7 +682,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
         for table in [
             "assets",
             "analyses",

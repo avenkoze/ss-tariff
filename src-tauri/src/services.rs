@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -11,13 +12,14 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::commands::AppState;
 use crate::models::ScanSummary;
-use crate::scanner::{discover_default_source, scan_folder};
+use crate::scanner::{discover_default_source, scan_folder_with_cancel};
 
 #[derive(Default)]
 pub struct RuntimeServices {
     watcher: Mutex<Option<RecommendedWatcher>>,
     scan_lock: Mutex<()>,
     last_schedule_slot: Mutex<Option<String>>,
+    cancel_requested: AtomicBool,
 }
 
 impl RuntimeServices {
@@ -26,7 +28,18 @@ impl RuntimeServices {
             .scan_lock
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        scan_folder(&state.database, &state.thumbnail_dir, source, trigger)
+        self.cancel_requested.store(false, Ordering::Release);
+        scan_folder_with_cancel(
+            &state.database,
+            &state.thumbnail_dir,
+            source,
+            trigger,
+            &|| self.cancel_requested.load(Ordering::Acquire),
+        )
+    }
+
+    pub fn cancel_scan(&self) {
+        self.cancel_requested.store(true, Ordering::Release);
     }
 
     fn claim_schedule_slot(&self, slot: String) -> bool {

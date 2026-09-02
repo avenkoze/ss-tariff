@@ -848,6 +848,19 @@ a {
   font-size: 12px;
 }
 
+.load-more-button {
+  display: block;
+  min-width: 190px;
+  min-height: 42px;
+  margin: 22px auto 0;
+  border: 2px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .empty-state {
   display: grid;
   min-height: 320px;
