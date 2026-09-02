@@ -213,4 +213,38 @@ mod tests {
 
         fs::remove_dir_all(root).unwrap();
     }
+
+    #[test]
+    fn full_scan_skips_unchanged_images_and_reanalyzes_changes() {
+        let root = std::env::temp_dir().join(format!("ss-tariff-flow-{}", uuid::Uuid::new_v4()));
+        let source = root.join("Screenshots");
+        let thumbnails = root.join("thumbnails");
+        fs::create_dir_all(&source).unwrap();
+        let image_path = source.join("shoe.png");
+        ImageBuffer::from_pixel(24, 24, Rgb([25_u8, 45, 80]))
+            .save(&image_path)
+            .unwrap();
+
+        let database = Database::new(root.join("library.db"));
+        database.migrate().unwrap();
+
+        let first = scan_folder(&database, &thumbnails, &source, "test").unwrap();
+        assert_eq!((first.discovered, first.analyzed, first.skipped), (1, 1, 0));
+        assert_eq!(database.list_assets().unwrap().len(), 1);
+
+        let second = scan_folder(&database, &thumbnails, &source, "test").unwrap();
+        assert_eq!(
+            (second.discovered, second.analyzed, second.skipped),
+            (1, 0, 1)
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        ImageBuffer::from_pixel(25, 24, Rgb([190_u8, 45, 80]))
+            .save(&image_path)
+            .unwrap();
+        let third = scan_folder(&database, &thumbnails, &source, "test").unwrap();
+        assert_eq!((third.discovered, third.analyzed, third.skipped), (1, 1, 0));
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }

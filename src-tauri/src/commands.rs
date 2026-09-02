@@ -1,18 +1,21 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::analysis::{cosine_similarity, embed_text};
 use crate::db::Database;
 use crate::models::{AppSnapshot, NativeAsset, NativeSettings, ScanSummary};
-use crate::scanner::{discover_default_source, scan_folder};
+use crate::scanner::discover_default_source;
+use crate::services::{self, RuntimeServices};
 
 #[derive(Clone)]
 pub struct AppState {
     pub database: Database,
     pub thumbnail_dir: PathBuf,
+    pub services: Arc<RuntimeServices>,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,43 +49,52 @@ pub async fn scan_configured_folder(
     state: State<'_, AppState>,
     trigger: Option<String>,
 ) -> Result<ScanSummary, String> {
-    let database = state.database.clone();
-    let thumbnail_dir = state.thumbnail_dir.clone();
-    let settings = database.load_settings().map_err(display_error)?;
+    let owned_state = state.inner().clone();
+    let settings = owned_state
+        .database
+        .load_settings()
+        .map_err(display_error)?;
     let source = settings
         .source_folder
         .map(PathBuf::from)
         .or_else(discover_default_source)
         .ok_or_else(|| "Önce bir screenshot klasörü seç.".to_string())?;
     let trigger = trigger.unwrap_or_else(|| "manual".into());
-    tauri::async_runtime::spawn_blocking(move || {
-        scan_folder(&database, &thumbnail_dir, &source, &trigger)
+    let scan_trigger = trigger.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        owned_state
+            .services
+            .scan(&owned_state, &source, &scan_trigger)
     })
     .await
     .map_err(display_error)?
-    .map_err(display_error)
+    .map_err(display_error)?;
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn scan_selected_folder(
+    app: AppHandle,
     state: State<'_, AppState>,
     folder: String,
     trigger: Option<String>,
 ) -> Result<ScanSummary, String> {
-    let database = state.database.clone();
-    let thumbnail_dir = state.thumbnail_dir.clone();
+    let owned_state = state.inner().clone();
     let source = PathBuf::from(folder);
     let trigger = trigger.unwrap_or_else(|| "manual".into());
-    tauri::async_runtime::spawn_blocking(move || {
-        scan_folder(&database, &thumbnail_dir, &source, &trigger)
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        owned_state.services.scan(&owned_state, &source, &trigger)
     })
     .await
     .map_err(display_error)?
-    .map_err(display_error)
+    .map_err(display_error)?;
+    services::configure_watcher(app.clone(), state.inner().clone()).map_err(display_error)?;
+    Ok(result)
 }
 
 #[tauri::command]
 pub fn save_native_settings(
+    app: AppHandle,
     state: State<'_, AppState>,
     settings: NativeSettings,
 ) -> Result<(), String> {
@@ -92,7 +104,8 @@ pub fn save_native_settings(
     state
         .database
         .save_settings(&settings)
-        .map_err(display_error)
+        .map_err(display_error)?;
+    services::configure_watcher(app, state.inner().clone()).map_err(display_error)
 }
 
 #[tauri::command]

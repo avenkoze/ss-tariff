@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Category, ItemStatus, JunkSignal, ScreenshotItem } from '../types';
 
@@ -131,4 +132,14 @@ export async function searchNativeLibrary(query: string, limit = 100): Promise<S
 
 export function recordNativeResurface(id: string, response?: string): Promise<void> {
   return invoke('record_resurface_response', { id, response });
+}
+
+export function onNativeLibraryChanged(
+  listener: (summary: NativeScanSummary) => void,
+): Promise<UnlistenFn> {
+  return listen<NativeScanSummary>('native-library-changed', (event) => listener(event.payload));
+}
+
+export function onNativeScanError(listener: (message: string) => void): Promise<UnlistenFn> {
+  return listen<string>('native-scan-error', (event) => listener(event.payload));
 }

@@ -53,6 +53,8 @@ import {
   getNativeSnapshot,
   isNativeRuntime,
   moveNativeToSystemTrash,
+  onNativeLibraryChanged,
+  onNativeScanError,
   recordNativeResurface,
   scanNativeLibrary,
   searchNativeLibrary,
@@ -267,6 +269,38 @@ function App() {
       window.clearTimeout(timer);
     };
   }, [query]);
+
+  useEffect(() => {
+    if (!NATIVE_RUNTIME) return undefined;
+    let active = true;
+    let stopLibraryListener: (() => void) | undefined;
+    let stopErrorListener: (() => void) | undefined;
+    void onNativeLibraryChanged(async (summary) => {
+      if (!active) return;
+      try {
+        await reloadNativeLibrary();
+        if (summary.analyzed > 0) {
+          setToast({ message: `${summary.analyzed} screenshot arka planda düzenlendi.` });
+        }
+      } catch {
+        // The next manual refresh retries the snapshot without interrupting the UI.
+      }
+    }).then((unlisten) => {
+      if (active) stopLibraryListener = unlisten;
+      else unlisten();
+    });
+    void onNativeScanError((message) => {
+      if (active) setToast({ message });
+    }).then((unlisten) => {
+      if (active) stopErrorListener = unlisten;
+      else unlisten();
+    });
+    return () => {
+      active = false;
+      stopLibraryListener?.();
+      stopErrorListener?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!toast) return undefined;
