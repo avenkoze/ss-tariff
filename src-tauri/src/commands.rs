@@ -47,6 +47,7 @@ pub fn get_app_snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, Strin
     })
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn scan_configured_folder(
     state: State<'_, AppState>,
@@ -75,6 +76,19 @@ pub async fn scan_configured_folder(
     Ok(result)
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn scan_configured_folder(
+    _state: State<'_, AppState>,
+    _trigger: Option<String>,
+) -> Result<ScanSummary, String> {
+    Err(
+        "Mobil galeri taraması MediaStore/PhotoKit adaptörü etkinleştirildiğinde kullanılabilir."
+            .into(),
+    )
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn scan_selected_folder(
     app: AppHandle,
@@ -93,6 +107,17 @@ pub async fn scan_selected_folder(
     .map_err(display_error)?;
     services::configure_watcher(app.clone(), state.inner().clone()).map_err(display_error)?;
     Ok(result)
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn scan_selected_folder(
+    _app: AppHandle,
+    _state: State<'_, AppState>,
+    _folder: String,
+    _trigger: Option<String>,
+) -> Result<ScanSummary, String> {
+    Err("Mobilde klasör yolu yerine sistem fotoğraf kitaplığı izni kullanılmalıdır.".into())
 }
 
 #[tauri::command]
@@ -159,6 +184,7 @@ pub fn update_native_category(
         .map_err(display_error)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub fn move_native_to_system_trash(
     state: State<'_, AppState>,
@@ -178,6 +204,19 @@ pub fn move_native_to_system_trash(
         trash::delete(&path).map_err(display_error)?;
     }
     state.database.mark_deleted(&id).map_err(display_error)
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+pub fn move_native_to_system_trash(
+    _state: State<'_, AppState>,
+    _id: String,
+    confirmed: bool,
+) -> Result<(), String> {
+    if !confirmed {
+        return Err("Silme için kullanıcı onayı gerekli.".into());
+    }
+    Err("Mobil silme işlemi Android/iOS sistem onay penceresinden tamamlanmalıdır.".into())
 }
 
 #[tauri::command]

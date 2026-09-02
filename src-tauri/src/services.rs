@@ -1,23 +1,43 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Mutex};
+use std::sync::Mutex;
+
+#[cfg(desktop)]
+use std::path::PathBuf;
+#[cfg(desktop)]
+use std::sync::mpsc;
+#[cfg(desktop)]
 use std::thread;
+#[cfg(desktop)]
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+use tauri::AppHandle;
+
+#[cfg(desktop)]
+use anyhow::Context;
+#[cfg(desktop)]
 use chrono::{Datelike, Local, Timelike, Weekday};
+#[cfg(desktop)]
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
-use tauri::{AppHandle, Emitter};
+#[cfg(desktop)]
+use tauri::Emitter;
+#[cfg(desktop)]
 use tauri_plugin_notification::NotificationExt;
 
 use crate::commands::AppState;
 use crate::models::ScanSummary;
-use crate::scanner::{discover_default_source, scan_folder_with_cancel};
+use crate::scanner::scan_folder_with_cancel;
+
+#[cfg(desktop)]
+use crate::scanner::discover_default_source;
 
 #[derive(Default)]
 pub struct RuntimeServices {
+    #[cfg(desktop)]
     watcher: Mutex<Option<RecommendedWatcher>>,
     scan_lock: Mutex<()>,
+    #[cfg(desktop)]
     last_schedule_slot: Mutex<Option<String>>,
     cancel_requested: AtomicBool,
 }
@@ -42,6 +62,7 @@ impl RuntimeServices {
         self.cancel_requested.store(true, Ordering::Release);
     }
 
+    #[cfg(desktop)]
     fn claim_schedule_slot(&self, slot: String) -> bool {
         let mut current = self
             .last_schedule_slot
@@ -55,6 +76,7 @@ impl RuntimeServices {
     }
 }
 
+#[cfg(desktop)]
 pub fn start(app: AppHandle, state: AppState) -> Result<()> {
     configure_watcher(app.clone(), state.clone())?;
     start_scheduler(app.clone(), state.clone());
@@ -66,6 +88,12 @@ pub fn start(app: AppHandle, state: AppState) -> Result<()> {
     Ok(())
 }
 
+#[cfg(mobile)]
+pub fn start(_app: AppHandle, _state: AppState) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(desktop)]
 pub fn configure_watcher(app: AppHandle, state: AppState) -> Result<()> {
     let settings = state.database.load_settings()?;
     let mut watcher_slot = state
@@ -96,6 +124,12 @@ pub fn configure_watcher(app: AppHandle, state: AppState) -> Result<()> {
     Ok(())
 }
 
+#[cfg(mobile)]
+pub fn configure_watcher(_app: AppHandle, _state: AppState) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(desktop)]
 pub fn spawn_configured_scan(app: AppHandle, state: AppState, trigger: &'static str) {
     thread::spawn(move || {
         let Some(source) = configured_source(&state) else {
@@ -110,6 +144,7 @@ pub fn spawn_configured_scan(app: AppHandle, state: AppState, trigger: &'static 
     });
 }
 
+#[cfg(desktop)]
 pub fn publish_scan(app: &AppHandle, state: &AppState, summary: &ScanSummary, notify_user: bool) {
     let _ = app.emit("native-library-changed", summary);
     if !notify_user || summary.analyzed == 0 {
@@ -133,6 +168,7 @@ pub fn publish_scan(app: &AppHandle, state: &AppState, summary: &ScanSummary, no
     }
 }
 
+#[cfg(desktop)]
 fn watch_events(
     receiver: mpsc::Receiver<notify::Result<Event>>,
     app: AppHandle,
@@ -155,6 +191,7 @@ fn watch_events(
     }
 }
 
+#[cfg(desktop)]
 fn start_scheduler(app: AppHandle, state: AppState) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(20));
@@ -187,6 +224,7 @@ fn start_scheduler(app: AppHandle, state: AppState) {
     });
 }
 
+#[cfg(desktop)]
 fn maybe_publish_period_report(app: &AppHandle, state: &AppState, now: chrono::DateTime<Local>) {
     if now.hour() < 9 {
         return;
@@ -235,6 +273,7 @@ fn maybe_publish_period_report(app: &AppHandle, state: &AppState, now: chrono::D
     drop(settings);
 }
 
+#[cfg(desktop)]
 fn format_bytes(bytes: u64) -> String {
     if bytes >= 1_073_741_824 {
         format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
@@ -247,6 +286,7 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+#[cfg(desktop)]
 fn configured_source(state: &AppState) -> Option<PathBuf> {
     state
         .database
@@ -256,6 +296,7 @@ fn configured_source(state: &AppState) -> Option<PathBuf> {
         .or_else(discover_default_source)
 }
 
+#[cfg(desktop)]
 fn event_is_relevant(event: &notify::Result<Event>) -> bool {
     event.as_ref().is_ok_and(|event| {
         event
@@ -265,6 +306,7 @@ fn event_is_relevant(event: &notify::Result<Event>) -> bool {
     })
 }
 
+#[cfg(desktop)]
 fn is_supported_image(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -276,7 +318,7 @@ fn is_supported_image(path: &Path) -> bool {
         })
 }
 
-#[cfg(test)]
+#[cfg(all(test, desktop))]
 mod tests {
     use super::*;
 
