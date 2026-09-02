@@ -26,6 +26,7 @@ jobs:
           workspaces: src-tauri
       - run: npm ci
       - run: npm test -- --run
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Import optional Windows publisher certificate
@@ -51,4 +52,3 @@ jobs:
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           includeUpdaterJson: true
-

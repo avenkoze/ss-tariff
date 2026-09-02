@@ -1,142 +1,85 @@
-# SS TARIFF - Platform Mimarisi
+# SS TARIFF Mimarisi
 
-## Ana karar
+## Karar
 
-Windows ilk dağıtım platformudur; Android ikinci platformdur. Ancak ürün çekirdeği hiçbir platformun dosya sistemi, izin modeli veya UI framework'üne doğrudan bağlanmaz. Windows sürümünde öğrenilen analiz, hafıza ve sıralama davranışı Android'e aynı çekirdek kurallarla taşınır.
-
-Web prototipi yalnızca UI ve davranış laboratuvarıdır. Üretim sürümü bir web sitesinin paketlenmiş hali değil; yerel kaynak adaptörleri, artımlı tarama motoru, SQLite veri katmanı, cihaz içi modeller ve işletim sistemi görevleri olan normal bir uygulamadır.
-
-## Katmanlar
+Windows ilk üretim hedefi, Android ikinci hedeftir. Ürün bir web wrapper değildir: React yalnızca görünüm katmanıdır; tarama, analiz, hafıza, zamanlama ve veri ömrü Rust/Tauri tarafında çalışır.
 
 ```text
-Windows / Android / iOS / macOS / Linux
-                 |
-       Platform adapter layer
-   files, gallery, schedule, trash,
-       notifications, permissions
-                 |
-          Application core
-  incremental scan, analysis pipeline,
-  memory graph, ranking, cleanup policy
-                 |
-            Local storage
- SQLite metadata + vector index + cache
-                 |
-                UI
- Today, Library, Groups, Cleaner, Search
+React UI: Recent, Gallery, Search, Settings, Reports
+                         |
+                  Tauri commands/events
+                         |
+     scan orchestration | local intelligence | services
+                         |
+       SQLite v4 + FTS5 + embedding/thumbnail cache
+                         |
+     Windows folder/OCR/trash | Android MediaStore (next)
 ```
 
-UI yalnızca use-case çağırır. `Pictures/Screenshots`, Android MediaStore veya iOS PhotoKit ayrıntılarını bilmez. Çekirdek de Windows path'i ya da Android content URI'si bilmez; sadece `ScreenshotSourcePort` sözleşmesini kullanır.
+## Kaynak modüller
 
-Kod karşılıkları:
-
-- `src/core/contracts.ts`: platform, kaynak, zamanlama, bildirim ve repository sınırları
-- `src/core/scanEngine.ts`: yalnızca yeni/değişen dosyaları analiz eden orkestratör
-- `src/core/memoryEngine.ts`: dönem özeti, ilgi hafızası ve yeniden gösterme sıralaması
-- `src/lib/analyzer.ts`: bugün hafif görsel analiz; daha sonra yerel OCR/embedding adaptörü
-- `src/lib/database.ts`: web prototipi için IndexedDB; üretimde SQLite adaptörü
-
-## Dosyaları taşımama ilkesi
-
-Kategoriler varsayılan olarak sanaldır. Uygulama screenshot'ı fiziksel olarak başka klasöre taşımaz, yeniden adlandırmaz veya kopyalamaz. Veritabanında `asset -> collection` ilişkisi kurar. Bunun faydaları:
-
-- Galeri ve diğer uygulamaların dosya bağlantıları bozulmaz.
-- Android/iOS izin modeliyle çatışmaz.
-- Yanlış kategori tek metadata değişikliğiyle düzeltilir.
-- Aynı screenshot birden çok akıllı grupta bulunabilir.
-- Diskte ikinci kopya oluşmaz.
-
-Kullanıcı isterse daha sonra açık bir `Dışa aktar` komutuyla gerçek klasör üretebilir.
+- `src/App.tsx`: ekranlar, kullanıcı kararları ve native/browser ayrımı
+- `src/lib/native.ts`: tipli Tauri komut ve olay istemcisi
+- `src-tauri/src/commands.rs`: UI ile yerel use-case sınırı
+- `src-tauri/src/scanner.rs`: artımlı tarama, iptal/devam, kaynak uzlaştırma ve cache temizliği
+- `src-tauri/src/analysis.rs`: Windows OCR, görsel fingerprint, çöp sinyalleri ve semantik vektör
+- `src-tauri/src/intelligence.rs`: bağlam çıkarımı ve kişisel öğrenme özellikleri
+- `src-tauri/src/db.rs`: migration, transaction, arama, rapor ve hafıza sorguları
+- `src-tauri/src/services.rs`: watcher, tray, zamanlayıcı ve yerel bildirim
+- `src-tauri/src/platform.rs`: başlangıçta çalıştırma gibi işletim sistemi işlemleri
+- `src/core/contracts.ts`: Android/iOS kaynak ve scheduler adaptörleri için platform bağımsız sözleşmeler
 
 ## Artımlı tarama
 
-Her platform adaptörü dosyaya kararlı bir `sourceId`, değişiklikleri gösteren bir `identityToken` ve tarama cursor'u üretir.
+Her dosya normalize edilmiş `source_id` ve `size:modified_time` biçiminde `identity_token` alır. Tarama öncesi tüm mevcut analiz kimlikleri tek sorguda belleğe alınır.
 
-- Windows: file ID/path + size + modified time
-- Android: MediaStore ID + generation/date modified
-- iOS: PhotoKit local identifier + modification date
-- macOS/Linux: inode/path + size + modified time
+1. Klasör recursive fakat symlink izlemeden listelenir.
+2. Aynı identity token ve güncel `analysis_version` varsa analiz atlanır.
+3. Değişen dosya okunur; hash, thumbnail, OCR, görsel sinyaller ve embedding üretilir.
+4. Kişisel kategori ağırlıkları sonucu gerekirse düzeltir.
+5. Asset, analiz, FTS, embedding, entity ve memory kayıtları tek transaction'da güncellenir.
+6. Başarılı tam taramada kaynaktan kaybolan dosyalar pasifleştirilir ve orphan thumbnail'lar silinir.
+7. İptal edilen tarama cursor'u bozmaz; sonraki tarama tamamlanan kayıtları atlayarak devam eder.
 
-Tarama algoritması:
+Dosya geri gelirse aynı `source_id` üzerinden eski asset yeniden etkinleşir; geçmiş ve kullanıcı kararları parçalanmaz.
 
-1. Son cursor'dan sonra eklenen/değişen adayları listele.
-2. `identityToken` ve `analysisVersion` güncelse atla.
-3. Değişen dosyada ucuz analiz aşamalarını çalıştır.
-4. Sonucu transaction içinde yaz.
-5. Başarılı batch sonunda cursor'u ilerlet.
+## SQLite v4
 
-10.000 görsel her yenilemede yeniden işlenmez. Model yükseltildiğinde yalnızca o modelin ürettiği alanlar eski sürüm numarasına sahipse yeniden hesaplanır.
+- `assets`: kaynak, identity, boyut, tarih ve yaşam döngüsü
+- `analyses`: sürümlü kategori, OCR, fingerprint ve çöp sinyalleri
+- `embeddings`: model sürümüne bağlı yerel 128 boyutlu vektör
+- `asset_search`: FTS5 metin indeksi
+- `collections`, `collection_items`: sanal kategoriler
+- `entities`, `entity_evidence`: bağlam ve screenshot kanıtı
+- `memories`, `surface_history`: dönem ve yeniden gösterme hafızası
+- `learning_weights`: kullanıcı kategori düzeltmelerinden öğrenilen yerel ağırlıklar
+- `actions`: sakla, temizle, düzelt ve gösterim kararları
+- `scan_runs`, `settings`: kesinti kaydı ve çalışma ayarları
 
-## Yenileme ve zamanlama
+Bağlantılar WAL, foreign key ve busy timeout ile açılır. Screenshot binary'si veritabanına yazılmaz. Silinen veya kaybolan dosyaya ait kullanılmayan thumbnail cache'i tarama sonunda temizlenir.
 
-Tetikleyiciler `manual`, `scheduled`, `startup` ve platform destekliyorsa `watch-event` olarak kaydedilir.
+## Zamanlama
 
-- Manuel yenileme her platformda hemen çalışır.
-- Windows uygulama açıkken klasör değişikliklerini hafif watcher ile izler; kapalıyken kullanıcı isterse işletim sistemi görevi yaklaşık seçilen saatlerde uygulamayı uyandırır.
-- Android periyodik işi işletim sistemi kuyruğuna bırakır; pil ve Doze nedeniyle tam dakika garantisi verilmez.
-- iOS arka plan zamanı tamamen sistemin takdirindedir. Kullanıcıya "yaklaşık" zaman gösterilir; sahte kesin saat vaadi verilmez.
+Windows uygulaması tray'de açık kaldığı sürece klasör watcher'ı ve saat kontrolü çalışır. `Başlangıçta çalıştır` seçeneği HKCU Run kaydına `--hidden` komutu ekler; böylece oturum açıldığında süreç tray'de başlayabilir. Uygulama tamamen kapatılırsa tarama çalışmaz; ayrı Windows Task Scheduler görevi kurulmaz.
 
-Varsayılan öneri: günde iki hafif tarama (öğlen/akşam), şarjdayken derin OCR/embedding bakımı ve her zaman manuel yenileme.
+Android'de bu mekanizma kullanılmayacak. Yaklaşık zamanlı işler WorkManager'a, medya değişiklikleri MediaStore sorgusuna bırakılacaktır. Doze nedeniyle kesin dakika vaat edilmez.
 
-## Üretim veri modeli
+## Platform sınırı
 
-SQLite tabloları:
-
-- `assets`: kaynak kimliği, URI/path, tarih, boyut, content hash, durum
-- `analyses`: pipeline/model sürümleri, kategori, güven, OCR, kalite sinyalleri
-- `embeddings`: görsel ve metin vektörleri; model sürümüyle ayrılmış
-- `collections`: sanal kategori ve kullanıcı koleksiyonları
-- `collection_items`: çoktan çoğa üyelik
-- `entities`: ürün, mekan, konu, etkinlik ve kavramlar
-- `entity_evidence`: hangi screenshot hangi bilgiyi destekliyor
-- `memories`: dönem, ilgi ve karar hafızaları
-- `surface_history`: ne zaman ne gösterildi, cooldown ve kullanıcı tepkisi
-- `scan_runs`: trigger, süre, bulunan/atlanan/hatalı sayıları
-- `actions`: sakla, sil, geri al, kategori düzeltme gibi eğitim sinyalleri
-- `settings`: tarama saatleri, izinler ve gizlilik tercihleri
-
-Screenshot'ın kendisi masaüstünde tekrar veritabanına kopyalanmaz; orijinal path referanslanır ve küçük thumbnail cache tutulur. Mobilde content URI/PhotoKit kimliği kullanılır. Web prototipindeki Blob saklama üretim davranışı değildir.
+`notify`, sistem çöpü, tray ve updater Android/iOS derlemelerinden koşullu olarak çıkarılır. Mobilde klasör yolu komutları bilerek hata verir; çünkü content URI'yi normal path gibi işlemek izin ve silme güvenliğini bozar. Android adaptörü `MediaStore ID + generation/date_modified` kimliğini ortak `SourceAsset` sözleşmesine çevirecektir.
 
 ## Güvenli silme
 
-Model hiçbir zaman tek başına kalıcı silme yapmaz.
+- Model yalnızca öneri üretir.
+- Kullanıcı açıkça onaylamadan native silme komutu çalışmaz.
+- Windows dosyayı sistem Çöp Kutusu'na taşır ve ancak başarıdan sonra DB durumunu değiştirir.
+- Android `MediaStore.createDeleteRequest`, iOS PhotoKit değişiklik onayı kullanmalıdır.
+- Kaynaktan uygulama dışında silinen dosya kullanıcı temizleme metriğine yazılmaz.
 
-1. `Muhtemel Çöp` sanal koleksiyonuna önerir.
-2. Nedenini ve güven skorunu gösterir.
-3. Kullanıcı seçimi işletim sistemi adaptörüne gider.
-4. Windows/macOS/Linux sistem çöpüne yollar.
-5. Android/iOS sistem silme onayını kullanıcıya gösterir.
-6. Uygulama yalnızca işletim sistemi başarı bildirdikten sonra kaydı silinmiş işaretler.
+## Ölçek ilkeleri
 
-## Dağıtım sırası
-
-### 1. Windows MVP
-
-- Screenshots klasörünü seçme ve kalıcı izin
-- başlangıç/manual/scheduled artımlı tarama
-- yerel OCR, perceptual hash, siyah/boş görüntü tespiti
-- SQLite + thumbnail cache
-- sistem çöpü ve geri alınabilir inceleme
-- Today, Library, Groups, Cleaner ve yerel arama
-- tray ve yerel bildirim
-
-### 2. Android
-
-- MediaStore screenshot koleksiyonu ve scoped permission
-- yaklaşık periyodik tarama
-- cihaz performans sınıfına göre Lite/Full analiz
-- sistem onaylı toplu silme
-- yerel bildirim ve Today widget adayı
-
-### 3. iOS, macOS, Linux
-
-Çekirdek değişmez; kaynak, scheduler, trash ve notification adaptörleri eklenir. iOS izin ve arka plan kısıtları nedeniyle Windows/Android davranışı birebir vaat edilmez.
-
-## Kaynak ve internet bütçesi
-
-- Aynı dosya ve aynı model sürümü ikinci kez işlenmez.
-- Thumbnail ve embedding cache boyutu sınırlandırılır.
-- Modeller tek parça dev paket yerine özellik paketleri olarak sürümlenir.
-- Temel sınıflandırma çevrimdışı ve küçük kalır.
-- İleri model paketi Wi-Fi/şarj koşuluyla, açık kullanıcı seçimiyle indirilir.
-- Telemetri varsayılan kapalıdır ve screenshot/OCR/embedding içeremez.
+- Değişmeyen dosya tekrar OCR edilmez.
+- Galeri aynı anda en fazla 120 yeni kart render eder.
+- Vektörler küçük ve sürümlüdür; eski model satırı yeniden analizde temizlenir.
+- Belirsiz sınıflandırma `other` kalır; kullanıcı düzeltmesi tahminden üstündür.
+- Ağ, hesap ve telemetri temel çalışma yolunda yoktur.

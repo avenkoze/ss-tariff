@@ -1,118 +1,79 @@
-# SS TARIFF - AI Sistemi ve Hafıza
+# Yerel AI ve Hafıza
 
-## Ürünün AI hedefleri
+## Bugün çalışan model yığını
 
-AI tek bir chat kutusu değildir. Sekiz ayrı iş hedefi vardır:
+SS TARIFF tek bir sohbet modeli çağırmaz. Küçük, açıklanabilir ve cihaz içi aşamalar birlikte çalışır.
 
-1. **Anla:** OCR, görsel içerik, uygulama kaynağı ve zamanı birleştir.
-2. **Düzenle:** Screenshot'ı bir veya birden fazla sanal koleksiyona yerleştir.
-3. **Temizlet:** kopya, siyah/boş, süresi geçmiş ve geçici içeriği gerekçeli öner.
-4. **Bul:** kelime aynı olmasa bile niyet ve anlamla arama yap.
-5. **Hatırlat:** unutulmuş ama hâlâ anlamlı bir kaydı uygun zamanda yeniden göster.
-6. **Özetle:** haftalık/aylık ilgileri, değişimleri ve açık işleri anlat.
-7. **Eyleme dönüştür:** ürün, mekan, tarif, etkinlik ve görev için yapılandırılmış öneri üret.
-8. **Koru:** hassas içerik riskini tanı, indeksleme ve gösterme politikasını uygula.
+1. **Kimlik:** SHA-256 content hash ve 16x16 görsel fingerprint
+2. **Kalite:** parlaklık ortalaması/sapması, koyu-açık piksel oranı ve tekdüze kare tespiti
+3. **OCR:** Windows Media OCR; screenshot buluta gönderilmez
+4. **Sınıflandırma:** OCR + dosya metni + kategori sözlüğü + kullanıcıdan öğrenilen özellik ağırlıkları
+5. **Görsel sinyal:** açık/koyu, baskın renk ve yatay/dikey/kare etiketleri
+6. **Semantik indeks:** kelime, ilişkili terim ve karakter üçlülerinden 128 boyutlu normalize feature-hash vektörü
+7. **Bağlam:** URL/domain, e-posta, kullanıcı adı, tarih ve fiyat çıkarımı
+8. **Hafıza:** eylem geçmişi, tekrar eden bağlam, cooldown ve dönem sorguları
 
-## Ucuzdan pahalıya analiz hattı
+Bu sürümde neural CLIP veya yerel LLM yoktur. “Embedding” alanı küçük ve deterministik `feature-hash-v2` indeksidir. Bu tercih indirme boyutunu ve inference maliyetini düşürür; görsel nesne tanıma kalitesi beklenmemelidir.
 
-Her dosyada büyük model çalışmaz.
+## Sürümler
 
-```text
-0. Metadata + content identity
-1. Görsel kalite + exact/perceptual duplicate
-2. Yerel OCR
-3. Hafif görsel/text embedding
-4. Kural tabanlı zaman ve çöp sinyalleri
-5. Yalnızca belirsiz/değerli kayıtta küçük yerel dil modeli
-6. Memory graph güncellemesi
-```
+- `analysis_version = 2`
+- `embedding_model = feature-hash-v2`
+- `schema user_version = 4`
+- OCR engine Windows'ta `windows-media-ocr`
 
-Örnek: tamamen siyah kareyi tespit etmek için LLM gerekmez. Ortalama parlaklık, sapma ve koyu piksel oranı yeterlidir. OCR metni güçlü biçimde `boarding pass` diyorsa görsel dil modeli tekrar çalıştırılmaz. Bu kademeli yaklaşım pil, RAM, tarama süresi ve model boyutunu düşürür.
+Model sürümü yükseldiğinde identity token aynı olsa bile yalnızca eski analizler yeniden hesaplanır. Kullanıcının kategori kararı `collection_items.source = user` ve action geçmişinde korunur.
 
-## AI çıktısı
+## Kişisel öğrenme
 
-Her analiz açıklanabilir ve sürümlüdür:
+Kullanıcı bir kategoriyi düzelttiğinde uygulama screenshot'tan şu genel özellikleri çıkarır:
 
-- kategori ve alternatif kategoriler
-- güven skoru
-- OCR metni ve dil
-- görsel/text embedding sürümü
-- çıkarılan varlıklar: ürün, marka, fiyat, mekan, tarih, etkinlik
-- zaman geçerliliği
-- çöp sinyalleri ve gerekçeleri
-- önerilen eylemler
-- hassasiyet seviyesi
+- normalleştirilmiş kelime ve kısa kökler
+- yatay/dikey/kare oranı
+- açık/koyu/normal ton
+- düşük/orta/yüksek görsel doku
 
-Model güncellemesi eski sonucu sessizce ezmez; yeni sürüm kayıt edilir ve gerekirse kullanıcı kararı korunur.
+Eski kategori özellikleri negatif, yeni kategori özellikleri pozitif ağırlık alır. Yeni bir screenshot'ta eşleşen ağırlık toplamı yeterliyse temel kategori tahmini cihaz üzerinde değişir ve `kişisel-model` etiketi eklenir. Ham görüntü veya eğitim verisi dışarı gönderilmez.
+
+Bu çevrimiçi öğrenme basit ve denetlenebilirdir. Tek bir düzeltmenin bütün galeriyi ele geçirmemesi için skor eşiği kullanılır; kullanıcı düzeltmesi her zaman son sözdür.
+
+## Semantik arama
+
+Arama sorgusu ve her screenshot aynı deterministic vektör uzayına çevrilir. Türkçe/İngilizce küçük alias kümeleri örneğin `ayakkabı / shoe / sneaker` ve `siyah / black / dark / koyu` ilişkisini kurar. Karakter üçlüleri küçük yazım farklılıklarına tolerans ekler. Sonuçlar cosine similarity ile sıralanır.
+
+Bu, “siyah ayakkabı” gibi günlük sorgular için ucuz bir başlangıç katmanıdır. Genel dünya bilgisi veya görüntüde OCR'sız nesne araması sağlamaz. Daha sonra eklenecek opsiyonel görsel model aynı `embeddings.model_version` sınırına yeni bir satır türü eklemelidir.
 
 ## Context hafızası
 
-Hafıza, binlerce OCR metnini bir prompt'a doldurmak değildir. Üç katmandır:
+Hafıza bir prompt'a binlerce OCR satırı doldurmaz.
 
-### Kanıt katmanı
+- **Kanıt:** her entity ve analiz bir `asset_id`ye bağlıdır.
+- **Yapı:** kategori sayıları, tekrar eden bağlam, eylemler ve gösterim geçmişi SQLite'ta tutulur.
+- **Retrieval:** Recent, arama ve rapor yalnızca gerekli satırları sorgular.
 
-Ham screenshot ve analiz sonucu. Her iddianın hangi screenshot'tan geldiği bellidir.
+`Geçmişten` sıralaması en az 14 günlük, silinmemiş, hassas olmayan ve yakın zamanda gösterilmemiş kayıtları seçer. Kullanıcının açtığı/sakladığı içerik pozitif; reddettiği içerik negatif sinyal olur. Tekrar eden domain veya bağlam gerekçeye eklenebilir.
 
-### Yapılandırılmış hafıza
+## Raporlar
 
-- tekrar eden ilgi: siyah ayakkabı, kahve ekipmanı, belirli seyahat rotası
-- varlık: ürün, marka, mekan, kişi, konu
-- olay: bilet tarihi, teslimat, etkinlik, rezervasyon
-- karar: saklandı, silindi, kategori düzeltildi, hatırlatma kapatıldı
-- dönem: bu hafta/ay hangi kategori arttı
+Haftalık ve aylık rapor doğrudan ölçülen olaylardan oluşur:
 
-### Retrieval context
+- eklenen, saklanan ve temizleme kuyruğuna alınan kayıt
+- gerçekten geri kazanılan byte
+- yeniden gösterilen screenshot sayısı
+- en yoğun kategoriler
+- tekrar eden bağlamlar
 
-Bir arama, özet veya hatırlatma anında yalnızca ilgili hafıza kayıtları ve kanıtları seçilir. Modelin göreceği context küçük, kaynaklı ve amaca özeldir.
-
-## Yeniden hatırlatma motoru
-
-"Rastgele" tamamen rastgele değildir. Sıralama şu sinyalleri kullanır:
-
-- en az 14 gün önce kaydedilmiş olma
-- ürün/mekan/fikir gibi tekrar bakılması değerli kategori
-- benzer ilginin birden fazla görülmesi
-- süresi geçmemiş olma
-- son 21 günde gösterilmemiş olma
-- kullanıcı tarafından daha önce reddedilmemiş olma
-- çeşitlilik: aynı kategori art arda gösterilmez
-
-Günlük seed sayesinde aynı gün kart kendi kendine değişmez. Manuel yenileme yeni bir aday seçebilir. Kart her zaman gerekçe gösterir: `47 gün önce bu ayakkabıya bakmıştın`.
-
-## Dönemsel içgörü
-
-Haftalık ve aylık özetler yalnızca ölçülebilen olaylardan üretilir:
-
-- kaç screenshot alındı
-- önceki döneme göre artış/azalış
-- en çok kaydedilen kategoriler
-- tekrar eden ürün/konu/mekanlar
-- süresi geçen kayıtlar
-- temizlenebilir alan
-- saklanan ve silinen önerilerin doğruluk oranı
-
-"Bu ay seyahat planlıyorsun" gibi yorum ancak birden çok kanıt ve yeterli güven varsa gösterilir; aksi halde `Seyahat içerikleri arttı` denir.
-
-## Değer hendeği
-
-SS TARIFF'i genel bir AI'a yazılan tek prompttan ayıran parçalar:
-
-- işletim sistemi galerisiyle güvenli ve artımlı entegrasyon
-- yıllara yayılan yerel screenshot indeksi
-- kullanıcı kararlarından öğrenen kişisel sıralama
-- kaynaklı entity/interest memory graph
-- sürümlü multimodal embedding ve OCR indeksi
-- yanlış silmeyi engelleyen politika ve sistem çöpü entegrasyonu
-- zamanlama, cooldown, çeşitlilik ve dönem analizi
-- cihaz kapasitesine göre kademeli inference
-
-Tek bir özellik kolay kopyalanabilir. Birlikte çalışan indeks + hafıza + güvenli yaşam döngüsü ürünün asıl değeridir.
+Bir domain görülmesi “seyahat planlıyorsun” gibi spekülatif sonuca çevrilmez. Uygulama yalnızca kanıtlanan sayıyı ve etiketi gösterir.
 
 ## Güven kuralları
 
-- Otomatik kalıcı silme yok.
-- Düşük güvenli sınıflandırma `Diğer`e gider; kesin etiket gibi gösterilmez.
-- Hassas sohbet/belge varsayılan olarak yeniden hatırlatma kartına çıkmaz.
-- Her içgörünün kanıt screenshot'larına geçişi vardır.
-- Kullanıcı düzeltmesi model tahmininden üstündür.
-- Özel veri bulut modeline gönderilmez; ileride opsiyon eklenirse ayrı ve açık izin ister.
+- Otomatik kalıcı silme yoktur.
+- Sistem çöpü komutu explicit `confirmed` olmadan reddedilir.
+- Sohbet ve belge kategorileri hassas kabul edilir; varsayılan resurface sorgusuna girmez.
+- Düşük güvenli içerik `other` kalır.
+- Kaynaktan dışarıdan silinme, kullanıcının temizlik başarısı sayılmaz.
+- Güncelleme ve AI analizi birbirinden bağımsızdır; screenshot updater endpoint'ine gitmez.
+
+## Sonraki model paketi
+
+Gerçek OCR'sız nesne araması için opsiyonel, quantized bir mobil/masaüstü görsel encoder gerekir. Paket açık kullanıcı seçimiyle, sürüm ve checksum kontrolüyle indirilmeli; temel ürün bu paket olmadan çalışmaya devam etmelidir. Kalite kararı sabit bir test arşivinde precision/recall ve yanlış temizlik önerisi oranıyla verilmelidir.

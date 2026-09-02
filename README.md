@@ -1,45 +1,73 @@
 # SS TARIFF
 
-Ekran goruntulerini cihazdan disari cikarmadan siniflandiran, gruplandiran ve temizleme kuyruguna alan privacy-first bir urun prototipi.
+SS TARIFF, ekran görüntülerini cihazdan çıkarmadan tarayan, düzenleyen, aratan ve güvenli biçimde temizleten kişisel screenshot hafızasıdır.
 
-## Calistirma
+Windows MVP gerçek bir Tauri uygulamasıdır. React arayüzünün altında Rust tarama motoru, Windows Media OCR, SQLite, yerel semantik indeks, kişisel kategori öğrenimi, klasör watcher'ı, zamanlama, bildirimler ve Windows Çöp Kutusu entegrasyonu çalışır.
 
-```bash
-npm install
+## Çalışan ürün yüzeyi
+
+- `Recent`: son screenshot'lar ve geçmişten kişiselleştirilmiş hatırlatmalar
+- `Gallery`: otomatik kategorilere ayrılmış galeri ve artımlı yükleme
+- Yerel OCR, renk/ton/yerleşim sinyalleri ve açıklanabilir çöp tespiti
+- Metin aynı olmasa da ilişkili terimleri bulan yerel semantik arama
+- Kullanıcının kategori düzeltmelerinden cihaz üzerinde öğrenme
+- URL, alan adı, e-posta, kullanıcı adı, tarih ve fiyat bağlamı
+- Haftalık ve aylık ölçülebilir raporlar
+- Manuel, başlangıç, watcher ve seçilen saatlerde artımlı tarama
+- Onaydan sonra Windows Çöp Kutusu'na taşıma
+- NSIS installer, imzalı updater artifact'ı ve GitHub release kanalı
+
+Screenshot dosyaları SQLite'a kopyalanmaz. Veritabanında yalnızca kaynak yolu, analiz, vektör ve küçük thumbnail tutulur. Ağ yüklemesi veya zorunlu hesap yoktur.
+
+## Geliştirme
+
+Gerekenler: Node.js 22+, Rust stable ve Windows'ta WebView2.
+
+```powershell
+npm ci
+npm run desktop:dev
+```
+
+Yalnızca arayüzü hızlı geliştirmek için browser laboratuvarı:
+
+```powershell
 npm run dev
 ```
 
-Kontroller:
+Browser modu IndexedDB ve demo/fallback analizini kullanır. Gerçek klasör tarama, Windows OCR, sistem çöpü, watcher ve SQLite için `desktop:dev` gerekir.
 
-```bash
-npm run test
+## Doğrulama
+
+```powershell
+npm test -- --run
 npm run build
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-## Bu surumde calisanlar
+Windows installer:
 
-- Ekran goruntusu dosyalarini surukle-birak veya dosya secici ile ice aktarma
-- Dosya adindan yerel siniflandirma ve etiketleme
-- Gorsel perceptual hash ile benzer ekran goruntulerini bulma
-- IndexedDB uzerinde yerel metadata ve Blob saklama
-- Kategori, arama, gruplar ve temizleme kuyrugu
-- Silme oncesi inceleme, geri alma ve kalici temizleme
-- Veri akisinin aciklandigi Private AI merkezi
-- `Bugun` ekrani: 30 gunluk ozet, kaynakli ilgi hafizasi ve eski kaydi yeniden gosterme
-- Siyah, beyaz ve tek renk kareler icin aciklanabilir cop sinyalleri
-- Platformdan bagimsiz incremental scan engine ve scheduler/source kontratlari
+```powershell
+npm run desktop:bundle
+```
 
-Demo kayitlari ilk acilista arayuzu doldurur. Gercek dosyalar eklendiginde yalnizca bu tarayicinin IndexedDB alaninda tutulur.
+Çıktı `src-tauri/target/release/bundle/nsis/` altında oluşur. Updater artifact'ı için `TAURI_SIGNING_PRIVATE_KEY` ve `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` gerekir. Güvenilir Windows yayıncı imzası için ayrıca bir Authenticode sertifikası gerekir.
 
-## Sonraki teknik adim
+## Platform durumu
 
-`LocalAnalyzer` arayuzunun arkasina WebGPU tabanli OCR/embedding modeli eklenmeli. Mevcut kod bu modele gecis icin analiz sonucunu `category`, `confidence`, `tags`, `extractedText` ve `hash` alanlariyla ayirir.
+| Hedef | Durum |
+| --- | --- |
+| Windows | Çalışan MVP ve installer |
+| Android | Ortak çekirdek hazır; MediaStore/WorkManager adaptörü ve Android SDK kurulumu sırada |
+| macOS/Linux | Masaüstü sınırları ayrıldı; platform QA ve paketleme sırada |
+| iOS | PhotoKit/BGTask adaptörü ve Apple imzalama sırada |
 
-Detaylar:
+Android başlangıç adımları ve izin modeli [docs/ANDROID.md](./docs/ANDROID.md), Windows yayın akışı [docs/RELEASE.md](./docs/RELEASE.md) içindedir.
 
-- [Urun temeli](./docs/PRODUCT.md)
-- [Windows-first platform mimarisi](./docs/ARCHITECTURE.md)
-- [AI hedefleri ve context hafizasi](./docs/AI-SYSTEM.md)
-- [Windows ve mobil yol haritasi](./docs/ROADMAP.md)
+## Belgeler
 
-UI/framework karari bilerek cekirdekten ayrilmistir. Mevcut React arayuzu urun laboratuvaridir; uretim platform adaptoru daha sonra secilecek kabuk uzerinden `src/core` kontratlarina baglanir.
+- [Ürün](./docs/PRODUCT.md)
+- [Mimari](./docs/ARCHITECTURE.md)
+- [Yerel AI ve hafıza](./docs/AI-SYSTEM.md)
+- [Yol haritası](./docs/ROADMAP.md)
+- [Doğrulama kaydı](./docs/VERIFICATION.md)

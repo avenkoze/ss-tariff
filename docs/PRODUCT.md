@@ -1,81 +1,74 @@
-# SS TARIFF - Urun Temeli
+# SS TARIFF Ürün Temeli
 
-## Tek cumlelik urun
+## Tek cümle
 
-SS TARIFF, ekran goruntulerini cihazdan disari cikarmadan anlamli gruplara ayiran ve guvenle temizleten kisisel screenshot kutusudur.
-
-Urunun uzun vadeli kategorisi `private screenshot memory`dir: yalnızca düzenlemez; kullanıcının zaman içindeki ilgilerini kaynaklı biçimde hatırlar, dönemleri özetler ve unutulmuş değerli kayıtları yeniden gösterir.
+SS TARIFF, screenshot arşivini cihazdan çıkarmadan düzenleyen, aratan, hatırlatan ve güvenle temizleten kişisel görsel hafızadır.
 
 ## Hook
 
-**10.000 screenshot. 10 dakikada duzenli.**
+**Unuttuğun screenshot'ı tarif et. SS TARIFF bulsun.**
 
-Urunun ilk saniyede gostermesi gereken sonuc: `1.284 ekran goruntusu -> 9 grup -> 312 temizleme onerisi -> 1,8 GB geri kazanilabilir alan`.
+İlk oturumdaki somut sonuç: kaç kayıt bulunduğu, hangi kategorilere ayrıldığı ve kaç byte'ın güvenle temizlenebileceği. Uzun açıklama veya chat kutusu ana deneyim değildir.
 
-## Hedef kullanici
+## Kullanıcı
 
-- Telefonunda 1.000+ ekran goruntusu bulunan siradan mobil kullanici
-- "Sonra bakarim" diye urun, tarif, mekan, sohbet ve fikir kaydeden kisi
-- Fotograflarini bir bulut AI servisine yuklemek istemeyen kullanici
+- Yüzlerce veya binlerce screenshot biriktiren günlük kullanıcı
+- “Sonra bakarım” diye ürün, mekan, tarif, sohbet, bilet ve fikir saklayan kişi
+- Dosya adı vermek veya klasör kurmak istemeyen kişi
+- Görsellerini bulut AI servisine yüklemek istemeyen kişi
 
-Alan bilgisi gerekmez. Deger, kullanicinin mevcut arsivinde ilk taramadan sonra gorulur.
+Alan bilgisi gerekmez. Kullanıcı yalnızca screenshot alır, klasörünü seçer ve gerektiğinde arar veya temizleme kararını verir.
 
-## Isler
+## Ana işler
 
-1. "Gecen ay gordugum siyah ayakkabiyi bul."
-2. "Ayni seyin tekrarlarini tek ekranda goster."
-3. "Eski QR kodlari, gecmis etkinlikleri ve anlamsiz ekran goruntulerini temizlet."
-4. "Tarifleri, alinacaklari ve mekanlari ben klasorlemeyeyim."
+1. “Daha önce baktığım siyah ayakkabıyı bul.”
+2. “Bu hafta ne biriktirdim?”
+3. “Siyah, boş ve anlamsız screenshot'ları güvenle göster.”
+4. “Eski ama değerli bir şeyi tekrar karşıma çıkar.”
+5. “Yanlış kategoriyi bir kez düzelt; benzerlerini sonra doğru koy.”
 
-## MVP kapsami
+## Windows deneyimi
 
-- Galeriden toplu ice aktarma
-- Yerel OCR/etiketleme adaptoru
-- Kategori ve benzerlik gruplari
-- Dogal dil benzeri arama
-- Guven seviyeli temizleme onerileri
-- Once incele, sonra sil; tek hamlede geri al
-- Cihaz ici calisma kaniti ve ag aktivitesi bildirimi
-- Today ana ekranı: dönem özeti, yeniden hatırlatma ve temizlik fırsatı
-- Manuel yenileme ve zamanlanmış artımlı tarama sözleşmesi
+İlk açılışta `Recent` görünür. Kullanıcı screenshot klasörünü seçer; ilk tarama sonrası en yeni kayıtlar üstte, uygun eski kayıtlar `Geçmişten` bölümünde görünür. `Gallery` kategorileri görsel koleksiyonlar halinde açar. Arama hem OCR/etiket metnini hem yerel benzerlik indeksini kullanır.
 
-## MVP disinda
+Ayarlar içinde klasör, başlangıç taraması, oturum açılışında çalışma, watcher, bildirim ve en fazla dört tarama saati vardır. Rapor sekmesi haftalık/aylık sonuçları ve tekrar eden bağlamları gösterir.
 
-- Sosyal ag ozellikleri
-- Bulut hesabi ve cihazlar arasi senkronizasyon
-- Foto duzenleme
-- Genel fotograf galerisi
-- Otomatik ve geri alinamaz silme
+Temizlik iki aşamalıdır: önce uygulama kuyruğu, sonra açık onayla Windows Çöp Kutusu. Model tek başına dosya silemez.
 
-## Basari metrikleri
+## Ürün değeri
 
-- Aktivasyon: ilk oturumda 200+ screenshot taranmasi
-- Aha ani: ilk 3 dakika icinde bir eski screenshot'in aranarak bulunmasi
-- Temizlik degeri: ilk haftada arsivin en az %10'unun incelenmesi
-- Guven: silme onerisinden geri alma oraninin %5'in altinda kalmasi
-- Tutunma: haftalik yeni screenshot ozetine donus
+Genel bir AI'a screenshot yükleyip tek prompt yazmaktan farklı olan sistem parçaları:
 
-## Gelir modeli
+- sürekli ve artımlı yerel arşiv indeksi
+- işletim sistemi klasörü, watcher, tray, scheduler ve çöp entegrasyonu
+- OCR, görsel sinyal, FTS ve semantik retrieval birlikteliği
+- kullanıcının düzeltmelerinden kalıcı kişisel öğrenme
+- kanıt screenshot'ına bağlı context ve dönem hafızası
+- cooldown ve kullanıcı tepkisiyle çalışan yeniden gösterme
+- açıklanabilir, onaylı dosya yaşam döngüsü
 
-- Free: 300 screenshot, temel gruplama ve arama
-- Plus: sinirsiz arsiv, akilli temizlik, yerel semantik arama
-- Lifetime lisans: privacy-first kitle icin abonelige alternatif
+## Kapsam dışı
 
-Fiyat test baslangici: Plus icin aylik 4,99 USD, lifetime icin 39 USD.
+- genel amaçlı chatbot
+- zorunlu bulut hesabı veya senkronizasyon
+- fotoğraf düzenleyici
+- screenshot dışı genel fotoğraf galerisi
+- otomatik ve geri alınamaz silme
+- domain uzmanlığı isteyen dikey iş akışları
 
-## Konumlandirma
+## Başarı ölçütleri
 
-Rakip kategori "screenshot organizer" olabilir; SS TARIFF'in kategorisi **private screenshot memory** olmali. Mesaj sirasi:
+- İlk oturumda 200+ screenshot'ın indekslenmesi
+- İlk üç dakikada eski bir screenshot'ın aramayla bulunması
+- İlk hafta temizleme önerilerinin en az %10'unun incelenmesi
+- Yanlış temizlik kararının %5 altında kalması
+- Haftalık rapor veya `Geçmişten` kartına geri dönüş
+- Kategori düzeltmesi sonrası benzer kayıt doğruluğunun artması
 
-1. Sonucu goster: duzenle, bul, temizle.
-2. Guveni acikla: gorseller cihazdan cikmaz.
-3. Teknolojiyi kanitla: yerel model, sifir upload, silmeden once onay.
+## Gelir deneyi
 
-## Ilk 30 gun
+- Free: sınırlı arşiv, temel gruplama ve arama
+- Plus: sınırsız arşiv, kişisel öğrenme, gelişmiş temizlik ve dönem hafızası
+- Lifetime: abonelik istemeyen privacy-first kullanıcı için alternatif
 
-- 1. hafta: calisan web prototipi ve 10 kullanici testi
-- 2. hafta: gercek cihaz ici OCR ve tekrar bulma kalitesi
-- 3. hafta: Android galeri ice aktarma denemesi
-- 4. hafta: bekleme listesi videosu, fiyat ve hook A/B testi
-
-En kritik dogrulama sorusu: Kullanici sadece duzenlenmis sonucu begeniyor mu, yoksa gercekten onerilen dosyalari siliyor mu?
+Fiyat ürün verisi olmadan kesinleştirilmemelidir. İlk test hipotezi aylık 4,99 USD ve lifetime 39 USD'dir; ödeme altyapısı Windows motorundan bağımsız tutulacaktır.
