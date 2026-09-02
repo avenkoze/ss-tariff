@@ -9,8 +9,9 @@ use sha2::{Digest, Sha256};
 
 use crate::models::{NativeAnalysis, VisualFingerprint};
 
-pub const ANALYSIS_VERSION: u32 = 1;
+pub const ANALYSIS_VERSION: u32 = 2;
 pub const EMBEDDING_DIMENSIONS: usize = 128;
+pub const EMBEDDING_MODEL_VERSION: &str = "feature-hash-v2";
 
 const CATEGORY_KEYWORDS: &[(&str, &[&str])] = &[
     (
@@ -118,7 +119,7 @@ pub fn analyze_image(path: &Path, thumbnail_dir: &Path) -> Result<NativeAnalysis
     let image = image::load_from_memory(&bytes)
         .with_context(|| format!("Görsel çözülemedi: {}", path.display()))?;
     let (width, height) = image.dimensions();
-    let (fingerprint, perceptual_hash, average_color) = inspect_visual(&image);
+    let (fingerprint, perceptual_hash, average_color, average_rgb) = inspect_visual(&image);
     let junk_signals = detect_junk(&fingerprint);
     let ocr_text = extract_ocr_text(path).unwrap_or_default();
     let file_text = path
@@ -127,7 +128,8 @@ pub fn analyze_image(path: &Path, thumbnail_dir: &Path) -> Result<NativeAnalysis
         .unwrap_or_default()
         .replace(['_', '-', '.'], " ");
     let combined_text = format!("{file_text} {ocr_text}").trim().to_string();
-    let (mut category, mut confidence, tags) = classify(&combined_text);
+    let (mut category, mut confidence, mut tags) = classify(&combined_text);
+    tags.extend(visual_tags(&fingerprint, average_rgb, width, height));
     if !junk_signals.is_empty() {
         category = "junk".into();
         confidence = 0.98;
@@ -173,7 +175,7 @@ pub fn analyze_image(path: &Path, thumbnail_dir: &Path) -> Result<NativeAnalysis
     })
 }
 
-fn inspect_visual(image: &DynamicImage) -> (VisualFingerprint, String, String) {
+fn inspect_visual(image: &DynamicImage) -> (VisualFingerprint, String, String, [u8; 3]) {
     let sample = image.resize_exact(16, 16, FilterType::Triangle).to_rgb8();
     let mut luminances = Vec::with_capacity(256);
     let mut red = 0_u64;
@@ -206,13 +208,63 @@ fn inspect_visual(image: &DynamicImage) -> (VisualFingerprint, String, String) {
         bright_pixel_ratio: luminances.iter().filter(|value| **value >= 245.0).count() as f64
             / count,
     };
+    let average_rgb = [
+        (red / luminances.len() as u64) as u8,
+        (green / luminances.len() as u64) as u8,
+        (blue / luminances.len() as u64) as u8,
+    ];
     let average_color = format!(
         "rgb({}, {}, {})",
-        red / luminances.len() as u64,
-        green / luminances.len() as u64,
-        blue / luminances.len() as u64
+        average_rgb[0], average_rgb[1], average_rgb[2]
     );
-    (fingerprint, hash, average_color)
+    (fingerprint, hash, average_color, average_rgb)
+}
+
+fn visual_tags(
+    fingerprint: &VisualFingerprint,
+    [red, green, blue]: [u8; 3],
+    width: u32,
+    height: u32,
+) -> Vec<String> {
+    let mut tags = Vec::with_capacity(3);
+    tags.push(
+        if width > height {
+            "yatay"
+        } else if height > width {
+            "dikey"
+        } else {
+            "kare"
+        }
+        .into(),
+    );
+
+    if fingerprint.mean_luminance <= 68.0 {
+        tags.push("koyu".into());
+    } else if fingerprint.mean_luminance >= 188.0 {
+        tags.push("açık".into());
+    }
+
+    let max = red.max(green).max(blue);
+    let min = red.min(green).min(blue);
+    if max.saturating_sub(min) <= 18 {
+        tags.push(
+            if max <= 72 {
+                "siyah"
+            } else if min >= 190 {
+                "beyaz"
+            } else {
+                "gri"
+            }
+            .into(),
+        );
+    } else if red == max {
+        tags.push("kırmızı".into());
+    } else if green == max {
+        tags.push("yeşil".into());
+    } else {
+        tags.push("mavi".into());
+    }
+    tags
 }
 
 fn detect_junk(fingerprint: &VisualFingerprint) -> Vec<String> {
@@ -279,6 +331,15 @@ pub fn embed_text(text: &str) -> Vec<f32> {
         let index = u16::from_le_bytes([digest[0], digest[1]]) as usize % EMBEDDING_DIMENSIONS;
         let sign = if digest[2] & 1 == 0 { 1.0 } else { -1.0 };
         vector[index] += sign;
+
+        let characters: Vec<char> = token.chars().collect();
+        for trigram in characters.windows(3) {
+            let feature = format!("g:{}{}{}", trigram[0], trigram[1], trigram[2]);
+            let digest = Sha256::digest(feature.as_bytes());
+            let index = u16::from_le_bytes([digest[0], digest[1]]) as usize % EMBEDDING_DIMENSIONS;
+            let sign = if digest[2] & 1 == 0 { 1.0 } else { -1.0 };
+            vector[index] += sign * 0.35;
+        }
     }
     let norm = vector.iter().map(|value| value * value).sum::<f32>().sqrt();
     if norm > 0.0 {
@@ -333,5 +394,16 @@ mod tests {
     #[test]
     fn empty_embeddings_are_safe() {
         assert_eq!(embed_text(""), vec![0.0; EMBEDDING_DIMENSIONS]);
+    }
+
+    #[test]
+    fn visual_tags_capture_layout_tone_and_color() {
+        let image = DynamicImage::new_rgb8(100, 200);
+        let (fingerprint, _, _, average_rgb) = inspect_visual(&image);
+        let tags = visual_tags(&fingerprint, average_rgb, 100, 200);
+
+        assert!(tags.iter().any(|tag| tag == "dikey"));
+        assert!(tags.iter().any(|tag| tag == "koyu"));
+        assert!(tags.iter().any(|tag| tag == "siyah"));
     }
 }

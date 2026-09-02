@@ -345,6 +345,30 @@
   color: #b99cff;
 }
 
+.report-contexts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 2px solid rgba(255, 255, 255, 0.075);
+}
+
+.report-contexts span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 8px;
+  color: rgba(242, 240, 245, 0.66);
+  font-size: 12px;
+}
+
+.report-contexts b {
+  color: #b99cff;
+}
+
 @media (max-width: 620px) {
   .settings-body,
   .report-body {

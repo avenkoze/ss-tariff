@@ -70,6 +70,10 @@ pub fn scan_folder_with_cancel(
     drop(connection);
 
     let candidates = enumerate_images(&source_path)?;
+    let current_source_ids = candidates
+        .iter()
+        .map(|candidate| candidate.source_id.clone())
+        .collect::<HashSet<_>>();
     let current_index = database.analysis_index()?;
     let discovered = candidates.len();
     let mut analyzed = 0;
@@ -93,12 +97,18 @@ pub fn scan_folder_with_cancel(
             skipped += 1;
             continue;
         }
-        match analyze_image(&candidate.path, thumbnail_dir)
-            .and_then(|analysis| database.upsert_analysis(&candidate, &analysis))
-        {
+        match analyze_image(&candidate.path, thumbnail_dir).and_then(|mut analysis| {
+            database.personalize_analysis(&candidate, &mut analysis)?;
+            database.upsert_analysis(&candidate, &analysis)
+        }) {
             Ok(_) => analyzed += 1,
             Err(error) => errors.push(format!("{}: {error:#}", candidate.file_name)),
         }
+    }
+
+    if !cancelled {
+        database.reconcile_source(&source_path, &current_source_ids)?;
+        prune_thumbnail_cache(database, thumbnail_dir)?;
     }
 
     let completed_at = Utc::now().to_rfc3339();
@@ -133,6 +143,23 @@ pub fn scan_folder_with_cancel(
         errors,
         cancelled,
     })
+}
+
+fn prune_thumbnail_cache(database: &Database, thumbnail_dir: &Path) -> Result<()> {
+    if !thumbnail_dir.is_dir() {
+        return Ok(());
+    }
+    let referenced = database.referenced_thumbnails()?;
+    for entry in fs::read_dir(thumbnail_dir)? {
+        let path = entry?.path();
+        if path.is_file()
+            && path.extension().and_then(|value| value.to_str()) == Some("jpg")
+            && !referenced.contains(&path)
+        {
+            let _ = fs::remove_file(path);
+        }
+    }
+    Ok(())
 }
 
 pub fn enumerate_images(folder: &Path) -> Result<Vec<SourceCandidate>> {
@@ -298,6 +325,28 @@ mod tests {
         let third = scan_folder(&database, &thumbnails, &source, "test").unwrap();
         assert_eq!((third.discovered, third.analyzed, third.skipped), (1, 1, 0));
 
+        let thumbnail = PathBuf::from(
+            database.list_assets().unwrap()[0]
+                .thumbnail_path
+                .as_ref()
+                .unwrap(),
+        );
+        fs::remove_file(&image_path).unwrap();
+        let fourth = scan_folder(&database, &thumbnails, &source, "test").unwrap();
+        assert_eq!(fourth.discovered, 0);
+        assert!(database.list_assets().unwrap().is_empty());
+        assert!(!thumbnail.exists());
+        assert_eq!(database.period_report(7).unwrap().deleted, 0);
+
+        ImageBuffer::from_pixel(25, 24, Rgb([190_u8, 45, 80]))
+            .save(&image_path)
+            .unwrap();
+        let fifth = scan_folder(&database, &thumbnails, &source, "test").unwrap();
+        assert_eq!((fifth.discovered, fifth.analyzed), (1, 1));
+        let restored = database.list_assets().unwrap();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, asset.id);
+
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -327,6 +376,45 @@ mod tests {
         let resumed = scan_folder(&database, &thumbnails, &source, "test").unwrap();
         assert!(!resumed.cancelled);
         assert_eq!((resumed.analyzed, resumed.skipped), (2, 1));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn category_correction_personalizes_future_screenshots() {
+        let root = std::env::temp_dir().join(format!("ss-tariff-learn-{}", uuid::Uuid::new_v4()));
+        let source = root.join("Screenshots");
+        let thumbnails = root.join("thumbnails");
+        fs::create_dir_all(&source).unwrap();
+        let make_image = |offset: u32| {
+            ImageBuffer::from_fn(80, 120, |x, y| {
+                Rgb([
+                    ((x * 3 + offset) % 255) as u8,
+                    ((y * 2 + offset) % 255) as u8,
+                    ((x + y + offset) % 255) as u8,
+                ])
+            })
+        };
+        make_image(0)
+            .save(source.join("capture-reference.png"))
+            .unwrap();
+        let database = Database::new(root.join("library.db"));
+        database.migrate().unwrap();
+        scan_folder(&database, &thumbnails, &source, "test").unwrap();
+        let reference = database.list_assets().unwrap().pop().unwrap();
+        database.update_category(&reference.id, "ideas").unwrap();
+
+        make_image(7)
+            .save(source.join("capture-followup.png"))
+            .unwrap();
+        scan_folder(&database, &thumbnails, &source, "test").unwrap();
+        let followup = database
+            .list_assets()
+            .unwrap()
+            .into_iter()
+            .find(|asset| asset.name == "capture-followup.png")
+            .unwrap();
+        assert_eq!(followup.category, "ideas");
+        assert!(followup.tags.iter().any(|tag| tag == "kişisel-model"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -384,8 +472,8 @@ mod tests {
             transaction
                 .execute(
                     "INSERT INTO embeddings (asset_id, kind, model_version, dimensions, vector, created_at)
-                     VALUES (?1, 'text', 'feature-hash-v1', 128, zeroblob(512), ?2)",
-                    params![id, now],
+                     VALUES (?1, 'text', ?2, 128, zeroblob(512), ?3)",
+                    params![id, crate::analysis::EMBEDDING_MODEL_VERSION, now],
                 )
                 .unwrap();
             transaction

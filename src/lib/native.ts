@@ -83,6 +83,7 @@ export interface NativePeriodReport {
   duplicateCandidates: number;
   resurfaced: number;
   categories: Array<{ category: string; count: number }>;
+  contexts: Array<{ kind: string; label: string; count: number }>;
 }
 
 interface NativeResurfaceCandidateDto {

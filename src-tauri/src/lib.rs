@@ -1,6 +1,7 @@
 mod analysis;
 mod commands;
 mod db;
+mod intelligence;
 mod models;
 mod platform;
 mod scanner;

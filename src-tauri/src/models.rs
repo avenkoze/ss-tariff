@@ -130,6 +130,14 @@ pub struct CategoryCount {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ContextCount {
+    pub kind: String,
+    pub label: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PeriodReport {
     pub period_days: u32,
     pub from: String,
@@ -143,6 +151,7 @@ pub struct PeriodReport {
     pub duplicate_candidates: u64,
     pub resurfaced: u64,
     pub categories: Vec<CategoryCount>,
+    pub contexts: Vec<ContextCount>,
 }
 
 #[derive(Debug, Clone, Serialize)]

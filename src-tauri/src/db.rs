@@ -1,19 +1,31 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
-use crate::analysis::ANALYSIS_VERSION;
+use crate::analysis::{ANALYSIS_VERSION, EMBEDDING_MODEL_VERSION};
+use crate::intelligence::{extract_entities, learning_features, ExtractedEntity};
 use crate::models::{
-    CategoryCount, NativeAnalysis, NativeAsset, NativeSettings, PeriodReport, ResurfaceCandidate,
-    SourceCandidate, VisualFingerprint,
+    CategoryCount, ContextCount, NativeAnalysis, NativeAsset, NativeSettings, PeriodReport,
+    ResurfaceCandidate, SourceCandidate, VisualFingerprint,
 };
 
 const MIGRATION_0001: &str = include_str!("../migrations/0001_init.sql");
 const MIGRATION_0002: &str = include_str!("../migrations/0002_memory_reports.sql");
 const MIGRATION_0003: &str = include_str!("../migrations/0003_scan_runtime.sql");
+const MIGRATION_0004: &str = include_str!("../migrations/0004_personal_intelligence.sql");
+
+type CategoryTrainingRow = (
+    String,
+    u32,
+    u32,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+);
 
 #[derive(Clone)]
 pub struct Database {
@@ -53,6 +65,9 @@ impl Database {
         }
         if version < 3 {
             connection.execute_batch(MIGRATION_0003)?;
+        }
+        if version < 4 {
+            connection.execute_batch(MIGRATION_0004)?;
         }
         Ok(())
     }
@@ -107,6 +122,60 @@ impl Database {
             .map_err(Into::into)
     }
 
+    pub fn personalize_analysis(
+        &self,
+        source: &SourceCandidate,
+        analysis: &mut NativeAnalysis,
+    ) -> Result<()> {
+        if !analysis.junk_signals.is_empty() {
+            return Ok(());
+        }
+        let text = format!(
+            "{} {} {}",
+            source.file_name,
+            analysis.extracted_text,
+            analysis.tags.join(" ")
+        );
+        let features = learning_features(
+            &text,
+            analysis.width,
+            analysis.height,
+            Some(&analysis.visual_fingerprint),
+        );
+        if features.is_empty() {
+            return Ok(());
+        }
+        let connection = self.connect()?;
+        let mut statement = connection.prepare(
+            "SELECT category, feature, weight FROM learning_weights WHERE observations > 0",
+        )?;
+        let mut scores = HashMap::<String, f64>::new();
+        for row in statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, f64>(2)?,
+            ))
+        })? {
+            let (category, feature, weight) = row?;
+            if features.contains(&feature) {
+                *scores.entry(category).or_default() += weight;
+            }
+        }
+        if let Some((category, score)) = scores
+            .into_iter()
+            .max_by(|first, second| first.1.total_cmp(&second.1))
+            .filter(|(_, score)| *score >= 1.5)
+        {
+            analysis.category = category;
+            analysis.confidence = (0.72 + score * 0.035).min(0.98);
+            if !analysis.tags.iter().any(|tag| tag == "kişisel-model") {
+                analysis.tags.push("kişisel-model".into());
+            }
+        }
+        Ok(())
+    }
+
     pub fn upsert_analysis(
         &self,
         source: &SourceCandidate,
@@ -148,6 +217,8 @@ impl Database {
          width = excluded.width,
          height = excluded.height,
          thumbnail_path = excluded.thumbnail_path,
+         status = CASE WHEN assets.status = 'deleted' THEN 'active' ELSE assets.status END,
+         deleted_at = CASE WHEN assets.status = 'deleted' THEN NULL ELSE assets.deleted_at END,
          updated_at = excluded.updated_at",
             params![
                 id,
@@ -214,11 +285,15 @@ impl Database {
         )?;
 
         transaction.execute(
+            "DELETE FROM embeddings WHERE asset_id = ?1 AND kind = 'text' AND model_version != ?2",
+            params![id, EMBEDDING_MODEL_VERSION],
+        )?;
+        transaction.execute(
       "INSERT INTO embeddings (asset_id, kind, model_version, dimensions, vector, created_at)
-       VALUES (?1, 'text', 'feature-hash-v1', ?2, ?3, ?4)
+       VALUES (?1, 'text', ?2, ?3, ?4, ?5)
        ON CONFLICT(asset_id, kind, model_version) DO UPDATE SET
          dimensions = excluded.dimensions, vector = excluded.vector, created_at = excluded.created_at",
-      params![id, analysis.embedding.len() as i64, embedding_to_bytes(&analysis.embedding), now],
+      params![id, EMBEDDING_MODEL_VERSION, analysis.embedding.len() as i64, embedding_to_bytes(&analysis.embedding), now],
     )?;
         transaction.execute(
             "DELETE FROM collection_items WHERE asset_id = ?1 AND source = 'analysis'",
@@ -229,10 +304,32 @@ impl Database {
       params![analysis.category, id, analysis.confidence],
     )?;
         transaction.execute("DELETE FROM asset_search WHERE asset_id = ?1", [&id])?;
+        let entities =
+            extract_entities(&format!("{} {}", source.file_name, analysis.extracted_text));
+        let entity_terms = entities
+            .iter()
+            .map(|entity| entity.normalized.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         transaction.execute(
       "INSERT INTO asset_search (asset_id, file_name, ocr_text, tags) VALUES (?1, ?2, ?3, ?4)",
-      params![id, source.file_name, analysis.extracted_text, analysis.tags.join(" ")],
+      params![id, source.file_name, analysis.extracted_text, format!("{} {entity_terms}", analysis.tags.join(" "))],
     )?;
+        replace_asset_entities(&transaction, &id, &entities, &now)?;
+        transaction.execute(
+            "INSERT INTO memories (id, kind, label, payload_json, confidence, first_seen_at, last_seen_at, updated_at)
+             VALUES (?1, 'category-context', ?2, ?3, ?4, ?5, ?5, ?5)
+             ON CONFLICT(id) DO UPDATE SET payload_json = excluded.payload_json,
+               confidence = MIN(0.99, memories.confidence + 0.01),
+               last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at",
+            params![
+                format!("category:{}", analysis.category),
+                analysis.category,
+                serde_json::json!({ "lastAssetId": id }).to_string(),
+                analysis.confidence,
+                now,
+            ],
+        )?;
         transaction.commit()?;
         Ok(id)
     }
@@ -262,6 +359,62 @@ impl Database {
                 row.get(0)
             })
             .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn reconcile_source(&self, source: &Path, current_ids: &HashSet<String>) -> Result<usize> {
+        let mut connection = self.connect()?;
+        let missing = {
+            let mut statement = connection.prepare(
+                "SELECT id, source_id, source_uri FROM assets WHERE status != 'deleted'",
+            )?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            rows.into_iter()
+                .filter(|(_, source_id, source_uri)| {
+                    Path::new(source_uri).starts_with(source) && !current_ids.contains(source_id)
+                })
+                .map(|(id, _, _)| id)
+                .collect::<Vec<_>>()
+        };
+        if missing.is_empty() {
+            return Ok(0);
+        }
+        let transaction = connection.transaction()?;
+        let now = Utc::now().to_rfc3339();
+        for id in &missing {
+            transaction.execute(
+                "UPDATE assets SET status = 'deleted', updated_at = ?1 WHERE id = ?2",
+                params![now, id],
+            )?;
+            record_action(
+                &transaction,
+                Some(id),
+                "external-missing",
+                Some("active"),
+                Some("deleted"),
+            )?;
+        }
+        transaction.commit()?;
+        Ok(missing.len())
+    }
+
+    pub fn referenced_thumbnails(&self) -> Result<HashSet<PathBuf>> {
+        let connection = self.connect()?;
+        let mut statement = connection.prepare(
+            "SELECT thumbnail_path FROM assets
+             WHERE status != 'deleted' AND thumbnail_path IS NOT NULL",
+        )?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        rows.map(|row| row.map(PathBuf::from))
+            .collect::<rusqlite::Result<HashSet<_>>>()
             .map_err(Into::into)
     }
 
@@ -311,9 +464,9 @@ impl Database {
         let connection = self.connect()?;
         let mut statement = connection.prepare(
             "SELECT e.asset_id, e.vector FROM embeddings e JOIN assets a ON a.id = e.asset_id
-       WHERE e.kind = 'text' AND e.model_version = 'feature-hash-v1' AND a.status != 'deleted'",
+       WHERE e.kind = 'text' AND e.model_version = ?1 AND a.status != 'deleted'",
         )?;
-        let rows = statement.query_map([], |row| {
+        let rows = statement.query_map([EMBEDDING_MODEL_VERSION], |row| {
             let id: String = row.get(0)?;
             let bytes: Vec<u8> = row.get(1)?;
             Ok((id, bytes_to_embedding(&bytes)))
@@ -340,6 +493,26 @@ impl Database {
                 |row| row.get(0),
             )
             .optional()?;
+        let training_row: Option<CategoryTrainingRow> = transaction
+            .query_row(
+                "SELECT a.file_name || ' ' || n.ocr_text || ' ' || n.tags_json,
+                        a.width, a.height, n.mean_luminance, n.luminance_deviation,
+                        n.dark_pixel_ratio, n.bright_pixel_ratio
+                 FROM assets a JOIN analyses n ON n.asset_id = a.id WHERE a.id = ?1",
+                [id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .optional()?;
         transaction.execute(
             "UPDATE analyses SET category = ?1, confidence = 1 WHERE asset_id = ?2",
             params![category, id],
@@ -357,6 +530,21 @@ impl Database {
             previous.as_deref(),
             Some(category),
         )?;
+        if previous.as_deref() != Some(category) {
+            if let Some((text, width, height, mean, deviation, dark, bright)) = training_row {
+                let fingerprint = mean.map(|mean_luminance| VisualFingerprint {
+                    mean_luminance,
+                    luminance_deviation: deviation.unwrap_or_default(),
+                    dark_pixel_ratio: dark.unwrap_or_default(),
+                    bright_pixel_ratio: bright.unwrap_or_default(),
+                });
+                let features = learning_features(&text, width, height, fingerprint.as_ref());
+                if let Some(previous) = previous.as_deref() {
+                    update_learning_weights(&transaction, previous, &features, -0.35)?;
+                }
+                update_learning_weights(&transaction, category, &features, 1.0)?;
+            }
+        }
         transaction.commit()?;
         Ok(())
     }
@@ -425,6 +613,23 @@ impl Database {
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut context_statement = connection.prepare(
+            "SELECT e.kind, e.canonical_name, COUNT(*) AS uses
+             FROM entities e
+             JOIN entity_evidence v ON v.entity_id = e.id
+             JOIN assets a ON a.id = v.asset_id
+             WHERE a.added_at >= ?1 AND a.status != 'deleted'
+             GROUP BY e.id ORDER BY uses DESC, e.last_seen_at DESC LIMIT 8",
+        )?;
+        let contexts = context_statement
+            .query_map([&from_text], |row| {
+                Ok(ContextCount {
+                    kind: row.get(0)?,
+                    label: row.get(1)?,
+                    count: row.get::<_, i64>(2)?.max(0) as u64,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
 
         Ok(PeriodReport {
             period_days: days,
@@ -439,6 +644,7 @@ impl Database {
             duplicate_candidates,
             resurfaced,
             categories,
+            contexts,
         })
     }
 
@@ -474,6 +680,24 @@ impl Database {
             let (id, shown_at) = row?;
             surfaces.insert(id, shown_at);
         }
+        let mut recurring_context = HashMap::<String, (String, u64)>::new();
+        let mut context_statement = connection.prepare(
+            "SELECT v.asset_id, e.canonical_name, e.occurrence_count
+             FROM entity_evidence v JOIN entities e ON e.id = v.entity_id
+             WHERE e.occurrence_count >= 2
+             ORDER BY e.occurrence_count DESC",
+        )?;
+        for row in context_statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?.max(0) as u64,
+            ))
+        })? {
+            let (asset_id, label, count) = row?;
+            recurring_context.entry(asset_id).or_insert((label, count));
+        }
+        drop(context_statement);
         drop(surface_statement);
         drop(action_statement);
         drop(connection);
@@ -512,10 +736,17 @@ impl Database {
                     })
                     .unwrap_or(0.0);
                 let jitter = stable_daily_jitter(&day_seed, &item.id);
+                let context_bonus = recurring_context
+                    .get(&item.id)
+                    .map(|(_, count)| (*count).min(8) as f64 * 1.4)
+                    .unwrap_or(0.0);
                 let score =
-                    age_days.min(365) as f64 * 0.18 + preference * 20.0 + jitter - shown_penalty;
+                    age_days.min(365) as f64 * 0.18 + preference * 20.0 + jitter + context_bonus
+                        - shown_penalty;
                 let reason = if item.status == "kept" {
                     "Daha önce saklamayı seçmiştin".to_string()
+                } else if let Some((label, _)) = recurring_context.get(&item.id) {
+                    format!("{label} tekrar karşına çıkmıştı")
                 } else if preference > 0.6 {
                     "Sık sakladığın bir kategoriden".to_string()
                 } else {
@@ -550,6 +781,77 @@ fn stable_daily_jitter(day: &str, id: &str) -> f64 {
     (value % 1000) as f64 / 100.0
 }
 
+fn update_learning_weights(
+    transaction: &Transaction<'_>,
+    category: &str,
+    features: &BTreeSet<String>,
+    delta: f64,
+) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    for feature in features {
+        transaction.execute(
+            "INSERT INTO learning_weights (category, feature, weight, observations, updated_at)
+             VALUES (?1, ?2, ?3, 1, ?4)
+             ON CONFLICT(category, feature) DO UPDATE SET
+               weight = MAX(-8, MIN(8, learning_weights.weight + excluded.weight)),
+               observations = learning_weights.observations + 1,
+               updated_at = excluded.updated_at",
+            params![category, feature, delta, now],
+        )?;
+    }
+    Ok(())
+}
+
+fn replace_asset_entities(
+    transaction: &Transaction<'_>,
+    asset_id: &str,
+    entities: &[ExtractedEntity],
+    now: &str,
+) -> Result<()> {
+    let previous_ids = {
+        let mut statement =
+            transaction.prepare("SELECT entity_id FROM entity_evidence WHERE asset_id = ?1")?;
+        let ids = statement
+            .query_map([asset_id], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        ids
+    };
+    transaction.execute(
+        "DELETE FROM entity_evidence WHERE asset_id = ?1",
+        [asset_id],
+    )?;
+    for entity_id in previous_ids {
+        transaction.execute(
+            "UPDATE entities SET occurrence_count = MAX(0, occurrence_count - 1) WHERE id = ?1",
+            [&entity_id],
+        )?;
+    }
+    transaction.execute("DELETE FROM entities WHERE occurrence_count <= 0", [])?;
+
+    for entity in entities {
+        transaction.execute(
+            "INSERT OR IGNORE INTO entities (
+               id, kind, canonical_name, normalized_name, attributes_json,
+               first_seen_at, last_seen_at, occurrence_count
+             ) VALUES (?1, ?2, ?3, ?4, '{}', ?5, ?5, 0)",
+            params![entity.id, entity.kind, entity.name, entity.normalized, now],
+        )?;
+        let inserted = transaction.execute(
+            "INSERT OR IGNORE INTO entity_evidence (entity_id, asset_id, confidence, evidence_text)
+             VALUES (?1, ?2, 0.9, ?3)",
+            params![entity.id, asset_id, entity.name],
+        )?;
+        if inserted > 0 {
+            transaction.execute(
+                "UPDATE entities SET occurrence_count = occurrence_count + 1,
+                   canonical_name = ?1, last_seen_at = ?2 WHERE id = ?3",
+                params![entity.name, now, entity.id],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 fn find_duplicate_group(
     connection: &Connection,
     hash: &str,
@@ -563,7 +865,7 @@ fn find_duplicate_group(
      ORDER BY n.analyzed_at DESC LIMIT 512",
     )?;
     let candidates = statement.query_map(
-        params![mean_luminance - 0.12, mean_luminance + 0.12],
+        params![mean_luminance - 30.0, mean_luminance + 30.0],
         |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -682,7 +984,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
         for table in [
             "assets",
             "analyses",
