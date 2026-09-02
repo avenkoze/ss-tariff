@@ -9,8 +9,8 @@ use crate::analysis::{cosine_similarity, embed_text};
 use crate::appearance;
 use crate::db::Database;
 use crate::models::{
-    AppSnapshot, NativeAsset, NativeSettings, PeriodReport, PreparedBackground,
-    ResurfaceCandidate, ScanSummary,
+    AppSnapshot, NativeAsset, NativeSettings, PeriodReport, PreparedBackground, ResurfaceCandidate,
+    ScanSummary,
 };
 use crate::platform;
 use crate::scanner::discover_default_source;
@@ -132,6 +132,7 @@ pub fn save_native_settings(
     for time in &settings.schedule_times {
         validate_time(time)?;
     }
+    validate_appearance(&settings)?;
     state
         .database
         .save_settings(&settings)
@@ -319,6 +320,57 @@ fn validate_time(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_appearance(settings: &NativeSettings) -> Result<(), String> {
+    let appearance = &settings.appearance;
+    if !["curated", "custom", "solid"].contains(&appearance.background_mode.as_str()) {
+        return Err("Geçersiz arka plan türü.".into());
+    }
+    if ![
+        "verdant-glasshouse",
+        "mist-lake",
+        "coastal-dusk",
+        "rain-stone",
+    ]
+    .contains(&appearance.background_id.as_str())
+    {
+        return Err("Geçersiz yerleşik arka plan.".into());
+    }
+    let color = appearance.solid_color.strip_prefix('#').unwrap_or_default();
+    if color.len() != 6 || !color.bytes().all(|value| value.is_ascii_hexdigit()) {
+        return Err("Geçersiz arka plan rengi.".into());
+    }
+    if appearance.background_mode == "custom" && appearance.custom_background_path.is_none() {
+        return Err("Özel arka plan dosyası bulunamadı.".into());
+    }
+    if appearance
+        .custom_background_luminance
+        .is_some_and(|value| !(0.0..=1.0).contains(&value))
+    {
+        return Err("Geçersiz arka plan parlaklığı.".into());
+    }
+    Ok(())
+}
+
 fn display_error(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_appearance_settings() {
+        let mut settings = NativeSettings::default();
+        assert!(validate_appearance(&settings).is_ok());
+
+        settings.appearance.background_mode = "custom".into();
+        assert!(validate_appearance(&settings).is_err());
+
+        settings.appearance.custom_background_path = Some("background.jpg".into());
+        assert!(validate_appearance(&settings).is_ok());
+
+        settings.appearance.solid_color = "transparent".into();
+        assert!(validate_appearance(&settings).is_err());
+    }
 }

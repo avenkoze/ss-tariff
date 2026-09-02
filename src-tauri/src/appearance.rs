@@ -11,7 +11,10 @@ use crate::models::PreparedBackground;
 
 const MAX_SOURCE_BYTES: u64 = 50 * 1024 * 1024;
 
-pub fn prepare_custom_background(source: &Path, appearance_dir: &Path) -> Result<PreparedBackground> {
+pub fn prepare_custom_background(
+    source: &Path,
+    appearance_dir: &Path,
+) -> Result<PreparedBackground> {
     let metadata = fs::metadata(source)
         .with_context(|| format!("Arka plan dosyası okunamadı: {}", source.display()))?;
     if !metadata.is_file() {
@@ -70,7 +73,8 @@ mod tests {
 
     #[test]
     fn prepares_a_bounded_local_copy_without_touching_the_source() {
-        let root = std::env::temp_dir().join(format!("ss-tariff-appearance-{}", uuid::Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("ss-tariff-appearance-{}", uuid::Uuid::new_v4()));
         let source = root.join("source.png");
         let destination = root.join("appearance");
         fs::create_dir_all(&root).unwrap();
