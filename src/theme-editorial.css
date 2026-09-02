@@ -60,14 +60,6 @@ input:focus-visible {
   font-weight: 620;
 }
 
-.brand-beta {
-  border-width: 2px;
-  border-color: var(--line);
-  border-radius: 2px;
-  background: transparent;
-  color: #77737a;
-}
-
 .primary-nav {
   gap: 1px;
 }
@@ -144,11 +136,6 @@ input:focus-visible {
   color: #77737a;
 }
 
-.local-status {
-  color: #8d8990;
-}
-
-.local-status span,
 .privacy-live > span {
   background: #8d72ce;
   box-shadow: none;

@@ -119,7 +119,6 @@ function Brand() {
     <div className="brand" aria-label="SS TARIFF">
       <span className="brand-mark">SS</span>
       <span className="brand-name">TARIFF</span>
-      <span className="brand-beta">BETA</span>
     </div>
   );
 }
@@ -199,7 +198,6 @@ function App() {
   const [toast, setToast] = useState<{ message: string; undoId?: string } | null>(null);
   const [deferredCleanerIds, setDeferredCleanerIds] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [storageReady, setStorageReady] = useState(false);
   const [refreshSalt, setRefreshSalt] = useState(0);
   const [lastRefreshAt, setLastRefreshAt] = useState(() => new Date());
   const [surfaceHistory, setSurfaceHistory] = useState<SurfaceHistory>(loadSurfaceHistory);
@@ -211,10 +209,7 @@ function App() {
       .then((localItems) => {
         if (active && localItems.length > 0) setItems((current) => [...localItems, ...current]);
       })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) setStorageReady(true);
-      });
+      .catch(() => undefined);
     return () => {
       active = false;
     };
@@ -440,10 +435,8 @@ function App() {
           })}
         </nav>
         <div className="sidebar-library-info">
-          <span>YEREL GALERİ</span>
           <div><HardDrive size={15} /><strong>{activeItems.length} öğe</strong></div>
           <div className="storage-meter"><span style={{ width: `${Math.min(100, (activeItems.length / 20) * 100)}%` }} /></div>
-          <small>{storageReady ? 'Bu tarayıcıda saklanıyor' : 'Yerel alan hazırlanıyor'}</small>
         </div>
         <div className="private-pill"><ShieldCheck size={16} /><span><strong>Cihazda</strong><small>Ağ aktarımı yok</small></span></div>
         <button className="help-link" type="button"><CircleHelp size={16} /> Yardım & geri bildirim</button>
@@ -459,7 +452,6 @@ function App() {
             {currentCopy.subtitle && <p>{currentCopy.subtitle}</p>}
           </div>
           <div className="topbar-actions">
-            <button className="local-status" type="button" onClick={() => setView('privacy')}><span /> Yalnızca cihazında</button>
             <button className="secondary-button refresh-button" type="button" onClick={refreshLibrary}><RefreshCw size={16} /><span>Yenile</span></button>
             <button className="primary-button" type="button" onClick={() => setImportOpen(true)}><Plus size={17} /> Screenshot ekle</button>
           </div>

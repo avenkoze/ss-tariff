@@ -95,12 +95,6 @@ input:focus-visible {
   font-weight: 560;
 }
 
-.brand-beta {
-  border-color: rgba(255, 255, 255, 0.1);
-  color: rgba(242, 240, 245, 0.38);
-  font-weight: 560;
-}
-
 .primary-nav button {
   color: rgba(233, 229, 239, 0.48);
   font-weight: 480;
@@ -133,8 +127,6 @@ input:focus-visible {
   border-top-color: rgba(255, 255, 255, 0.065);
 }
 
-.sidebar-library-info > span,
-.sidebar-library-info small,
 .help-link {
   color: rgba(226, 222, 232, 0.34);
 }
@@ -186,16 +178,6 @@ input:focus-visible {
 .page-heading p {
   color: rgba(226, 222, 232, 0.38);
   font-weight: 360;
-}
-
-.local-status {
-  color: rgba(238, 235, 242, 0.48);
-  font-weight: 480;
-}
-
-.local-status span {
-  background: #9b7aff;
-  box-shadow: 0 0 0 4px rgba(155, 122, 255, 0.08), 0 0 12px rgba(155, 122, 255, 0.42);
 }
 
 .primary-button {

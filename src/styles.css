@@ -114,14 +114,6 @@ a {
   letter-spacing: 0;
 }
 
-.brand-beta {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  padding: 2px 4px;
-  color: #aeb8b4;
-  font-size: 11px;
-  font-weight: 800;
-}
-
 .primary-nav {
   display: grid;
   gap: 4px;
@@ -177,12 +169,6 @@ a {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.sidebar-library-info > span {
-  color: #84908c;
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .sidebar-library-info > div:not(.storage-meter) {
   display: flex;
   align-items: center;
@@ -202,11 +188,6 @@ a {
   display: block;
   height: 100%;
   background: var(--yellow);
-}
-
-.sidebar-library-info small {
-  color: #84908c;
-  font-size: 13px;
 }
 
 .private-pill {
@@ -316,27 +297,6 @@ a {
   align-items: center;
   gap: 10px;
   margin-left: auto;
-}
-
-.local-status {
-  display: inline-flex;
-  min-height: 35px;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  background: transparent;
-  color: #53605c;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.local-status span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 0 4px rgba(21, 161, 111, 0.12);
 }
 
 .primary-button,
@@ -2639,7 +2599,6 @@ a {
   }
 
   .page-heading p,
-  .local-status,
   .topbar .primary-button span {
     display: none;
   }
