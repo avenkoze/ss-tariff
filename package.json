@@ -10,6 +10,9 @@
     "desktop:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "desktop:build": "tauri build --no-bundle",
     "desktop:bundle": "tauri build",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview --host 127.0.0.1"
