@@ -104,12 +104,12 @@ a {
   border: 1px solid rgba(255, 255, 255, 0.38);
   background: #f2c84b;
   color: #1c2825;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 900;
 }
 
 .brand-name {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 840;
   letter-spacing: 0;
 }
@@ -118,7 +118,7 @@ a {
   border: 1px solid rgba(255, 255, 255, 0.22);
   padding: 2px 4px;
   color: #aeb8b4;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -139,7 +139,7 @@ a {
   padding: 0 12px;
   background: transparent;
   color: #aeb8b4;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 650;
   text-align: left;
   cursor: pointer;
@@ -165,7 +165,7 @@ a {
   padding: 2px 5px;
   background: var(--coral);
   color: white;
-  font-size: 10px;
+  font-size: 13px;
   text-align: center;
 }
 
@@ -179,7 +179,7 @@ a {
 
 .sidebar-library-info > span {
   color: #84908c;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -188,7 +188,7 @@ a {
   align-items: center;
   gap: 8px;
   color: #e5e9e7;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .storage-meter {
@@ -206,7 +206,7 @@ a {
 
 .sidebar-library-info small {
   color: #84908c;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .private-pill {
@@ -228,12 +228,12 @@ a {
 
 .private-pill strong {
   color: #f5f7f6;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .private-pill small {
   color: #81908b;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .help-link {
@@ -245,7 +245,7 @@ a {
   padding: 9px 12px;
   background: transparent;
   color: #84908c;
-  font-size: 11px;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -297,7 +297,7 @@ a {
 
 .page-heading h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 780;
   letter-spacing: 0;
 }
@@ -306,7 +306,7 @@ a {
   margin: 4px 0 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -326,7 +326,7 @@ a {
   border: 0;
   background: transparent;
   color: #53605c;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -348,7 +348,7 @@ a {
   gap: 8px;
   border-radius: 6px;
   padding: 0 14px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 750;
   cursor: pointer;
 }
@@ -403,18 +403,18 @@ a {
 .insight-strip > div > span,
 .eyebrow {
   color: #7c8581;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 850;
 }
 
 .insight-strip > div > strong {
-  font-size: 22px;
+  font-size: 26px;
   line-height: 1;
 }
 
 .insight-strip > div > small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .insight-strip .insight-message {
@@ -439,13 +439,13 @@ a {
 }
 
 .insight-message p strong {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .insight-message p span {
   overflow: hidden;
   color: #60706a;
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -461,7 +461,7 @@ a {
   border-bottom: 1px solid #8daea1;
   background: transparent;
   color: #1c5c46;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 800;
   cursor: pointer;
 }
@@ -501,7 +501,7 @@ a {
   outline: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .smart-search input::placeholder {
@@ -516,7 +516,7 @@ a {
   background: #f7f8f5;
   color: #8a918e;
   font-family: inherit;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .search-row > .secondary-button {
@@ -547,14 +547,14 @@ a {
   padding: 0 10px;
   background: transparent;
   color: #69726e;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .category-tabs button span {
   color: #a0a6a3;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .category-tabs button:hover {
@@ -584,12 +584,12 @@ a {
 
 .section-title-row h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .section-title-row span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .section-title-row > button {
@@ -600,7 +600,7 @@ a {
   border: 0;
   background: transparent;
   color: #69726e;
-  font-size: 10px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -662,7 +662,7 @@ a {
   padding: 0 7px;
   background: rgba(24, 33, 31, 0.88);
   color: #fff;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 750;
   backdrop-filter: blur(5px);
 }
@@ -674,7 +674,7 @@ a {
   gap: 8px;
   padding: 7px 2px 0;
   color: #7d8582;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .card-meta div {
@@ -687,7 +687,7 @@ a {
 .card-meta strong {
   overflow: hidden;
   color: #4e5955;
-  font-size: 9px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -713,7 +713,7 @@ a {
 
 .gallery-intro h2 {
   margin: 8px 0 7px;
-  font-size: 36px;
+  font-size: 40px;
   font-weight: 480;
   line-height: 1.05;
 }
@@ -721,7 +721,7 @@ a {
 .gallery-intro p {
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .gallery-total {
@@ -733,12 +733,12 @@ a {
 
 .gallery-total span {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 750;
 }
 
 .gallery-total strong {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 520;
 }
 
@@ -756,7 +756,7 @@ a {
   padding: 4px 0;
   background: transparent;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 680;
   cursor: pointer;
 }
@@ -770,13 +770,13 @@ a {
 }
 
 .gallery-detail-title > strong {
-  font-size: 34px;
+  font-size: 38px;
   font-weight: 440;
 }
 
 .gallery-detail-title h2 {
   margin: 5px 0 0;
-  font-size: 27px;
+  font-size: 31px;
   font-weight: 480;
 }
 
@@ -886,7 +886,7 @@ a {
 
 .category-cover-meta strong {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -894,7 +894,7 @@ a {
 
 .category-cover-meta small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .category-cover-icon {
@@ -922,7 +922,7 @@ a {
 .gallery-results-head h3 {
   overflow: hidden;
   margin: 0;
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 540;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -931,7 +931,7 @@ a {
 .gallery-results-head span {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .empty-state {
@@ -951,13 +951,13 @@ a {
 
 .empty-state h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 19px;
 }
 
 .empty-state p {
   margin: 0 0 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 /* Synthetic screenshot previews */
@@ -1493,13 +1493,13 @@ a {
 
 .cleaner-toolbar h2 {
   margin: 5px 0 2px;
-  font-size: 18px;
+  font-size: 22px;
 }
 
 .cleaner-toolbar p {
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .queue-progress {
@@ -1540,7 +1540,7 @@ a {
   gap: 7px;
   margin-bottom: 12px;
   color: var(--green);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .cleaner-reason strong {
@@ -1565,7 +1565,7 @@ a {
   justify-content: space-between;
   gap: 12px;
   margin: 10px auto 0;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .cleaner-item-meta strong {
@@ -1604,12 +1604,12 @@ a {
 }
 
 .decision-button strong {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .decision-button small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .decision-button.keep svg { color: var(--green); }
@@ -1655,14 +1655,14 @@ a {
 
 .cleaner-queue-list button strong {
   overflow: hidden;
-  font-size: 9px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cleaner-queue-list button small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .cleaner-complete {
@@ -1680,13 +1680,13 @@ a {
 
 .groups-summary h2 {
   margin: 7px 0 6px;
-  font-size: 24px;
+  font-size: 28px;
 }
 
 .groups-summary p {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .group-orbit {
@@ -1716,7 +1716,7 @@ a {
   place-items: center;
   background: var(--dark);
   color: #fff;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 900;
   transform: translate(-50%, -50%);
 }
@@ -1772,12 +1772,12 @@ a {
 }
 
 .group-copy strong {
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .group-copy small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .group-thumbnails {
@@ -1806,7 +1806,7 @@ a {
   border: 0;
   background: transparent;
   color: #65716d;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1832,14 +1832,14 @@ a {
 
 .privacy-hero h2 {
   margin: 7px 0;
-  font-size: 24px;
+  font-size: 28px;
 }
 
 .privacy-hero p {
   max-width: 700px;
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -1860,12 +1860,12 @@ a {
 
 .privacy-live strong {
   color: var(--green);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .privacy-live small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .privacy-grid {
@@ -1914,13 +1914,13 @@ a {
 
 .flow-step strong,
 .blocked-cloud strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .flow-step small,
 .blocked-cloud small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .flow-step b,
@@ -1929,7 +1929,7 @@ a {
   border-radius: 4px;
   padding: 4px 6px;
   color: var(--green);
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .flow-line {
@@ -1985,12 +1985,12 @@ a {
 }
 
 .privacy-controls article strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .privacy-controls article small {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .toggle {
@@ -2025,7 +2025,7 @@ a {
   padding: 3px 0;
   background: transparent;
   color: #b64f39;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 750;
   cursor: pointer;
 }
@@ -2044,21 +2044,21 @@ a {
 
 .privacy-proof span {
   color: #74827c;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .privacy-proof strong {
   grid-row: span 2;
   color: var(--green);
-  font-size: 36px;
+  font-size: 40px;
   line-height: 1;
 }
 
 .privacy-proof p {
   margin: 0;
   color: #53645e;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 /* Drawer and modal */
@@ -2092,7 +2092,7 @@ a {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .drawer-preview {
@@ -2110,14 +2110,14 @@ a {
 
 .drawer-title span {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .drawer-title h2 {
   max-width: 290px;
   overflow: hidden;
   margin: 4px 0 0;
-  font-size: 14px;
+  font-size: 17px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2135,7 +2135,7 @@ a {
   align-items: center;
   justify-content: space-between;
   color: #77817d;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -2159,7 +2159,7 @@ a {
 .analysis-block p {
   margin: 0;
   color: #59645f;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -2176,7 +2176,7 @@ a {
   padding: 4px 7px;
   background: #fff;
   color: #66716d;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .file-facts {
@@ -2190,7 +2190,7 @@ a {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .file-facts dt {
@@ -2241,13 +2241,13 @@ a {
 
 .modal-head h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .modal-head p {
   margin: 3px 0 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .drop-zone {
@@ -2297,14 +2297,14 @@ a {
 .drop-zone h3,
 .importing-state h3 {
   margin: 5px 0 0;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .drop-zone p,
 .importing-state p {
   margin: 0 0 8px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .import-privacy {
@@ -2323,12 +2323,12 @@ a {
 
 .import-privacy strong {
   color: #31433c;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .import-privacy span {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .importing-state {
@@ -2372,7 +2372,7 @@ a {
   background: var(--dark);
   color: #fff;
   box-shadow: 0 12px 32px rgba(22, 30, 27, 0.22);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .toast > svg {
@@ -2389,7 +2389,7 @@ a {
   padding: 3px 0;
   background: transparent;
   color: #fff;
-  font-size: 9px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -2421,7 +2421,7 @@ a {
 
 .recent-section-head h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 560;
 }
 
@@ -2433,7 +2433,7 @@ a {
   padding: 5px 0;
   background: transparent;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -2503,7 +2503,7 @@ a {
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 650;
   text-transform: uppercase;
 }
@@ -2516,7 +2516,7 @@ a {
 .archive-pick-copy > strong {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 520;
   line-height: 1.25;
   -webkit-box-orient: vertical;
@@ -2527,7 +2527,7 @@ a {
   display: -webkit-box;
   overflow: hidden;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -2545,7 +2545,7 @@ a {
 
 .recent-empty strong {
   color: var(--ink);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 560;
 }
 
@@ -2635,7 +2635,7 @@ a {
   }
 
   .page-heading h1 {
-    font-size: 17px;
+    font-size: 20px;
   }
 
   .page-heading p,
@@ -2674,7 +2674,7 @@ a {
   }
 
   .insight-strip > div > strong {
-    font-size: 18px;
+    font-size: 22px;
   }
 
   .insight-strip .insight-message {
@@ -2719,7 +2719,7 @@ a {
     border: 0;
     background: transparent;
     color: #7e8783;
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .mobile-nav button.active {
@@ -2781,7 +2781,7 @@ a {
 
   .groups-summary h2,
   .privacy-hero h2 {
-    font-size: 20px;
+    font-size: 24px;
   }
 
   .group-orbit {
@@ -2878,11 +2878,11 @@ a {
   }
 
   .insight-strip > div > strong {
-    font-size: 15px;
+    font-size: 18px;
   }
 
   .insight-strip > div > small {
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .insight-strip .insight-message {
@@ -2957,7 +2957,7 @@ a {
   }
 
   .gallery-intro h2 {
-    font-size: 30px;
+    font-size: 34px;
   }
 
   .gallery-total {
@@ -2968,7 +2968,7 @@ a {
   }
 
   .gallery-total strong {
-    font-size: 15px;
+    font-size: 18px;
   }
 
   .gallery-detail-title {
@@ -2982,11 +2982,11 @@ a {
   }
 
   .gallery-detail-title h2 {
-    font-size: 20px;
+    font-size: 24px;
   }
 
   .gallery-detail-title > strong {
-    font-size: 26px;
+    font-size: 30px;
   }
 
   .category-gallery {
