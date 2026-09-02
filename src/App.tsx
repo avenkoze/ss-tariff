@@ -65,7 +65,7 @@ import {
 
 const VIEW_COPY: Record<ViewId, { title: string; subtitle: string }> = {
   recent: { title: 'Recent', subtitle: '' },
-  library: { title: 'Gallery', subtitle: 'Kategoriler ve kayıtlar' },
+  library: { title: 'Gallery', subtitle: '' },
   cleaner: { title: 'Temizleyici', subtitle: 'Silmeden önce her öneri sende son kez durur.' },
   groups: { title: 'Gruplar', subtitle: 'Benzer niyetler, tek bir düzenli yerde.' },
   privacy: { title: 'Gizlilik', subtitle: 'Tüm analiz bu cihazda.' },
@@ -256,7 +256,6 @@ function App() {
     [items, deferredCleanerIds],
   );
   const trashItems = useMemo(() => items.filter((item) => item.status === 'trash'), [items]);
-  const gallerySize = activeItems.reduce((total, item) => total + item.size, 0);
   const recentItems = useMemo(
     () => [...activeItems]
       .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime())
@@ -502,19 +501,12 @@ function App() {
 
         {view === 'library' && (
           <section className="page-content library-page">
-            {category === 'all' ? (
-              <div className="gallery-intro">
-                <div><span className="eyebrow">KATEGORİLER</span><h2>Galerin.</h2><p>{galleryCategories.length} kategori · {activeItems.length} screenshot</p></div>
-                <div className="gallery-total"><span>BU CİHAZDA</span><strong>{formatBytes(gallerySize)}</strong></div>
-              </div>
-            ) : (
-              <div className="gallery-detail-intro" style={{ '--gallery-accent': CATEGORY_META[category].color } as CSSProperties}>
-                <button className="gallery-back" type="button" onClick={() => { setCategory('all'); setQuery(''); }}><ArrowLeft size={17} /> Tüm kategoriler</button>
-                <div className="gallery-detail-title">
-                  <span className="gallery-category-mark"><CategoryGlyph categoryId={category} size={24} /></span>
-                  <div><span className="eyebrow">KATEGORİ</span><h2>{CATEGORY_META[category].label}</h2></div>
-                  <strong>{visibleItems.length}</strong>
-                </div>
+            {category !== 'all' && (
+              <div className="gallery-detail-bar" style={{ '--gallery-accent': CATEGORY_META[category].color } as CSSProperties}>
+                <IconButton label="Tüm kategorilere dön" className="gallery-back" onClick={() => { setCategory('all'); setQuery(''); }}><ArrowLeft size={18} /></IconButton>
+                <span className="gallery-category-mark"><CategoryGlyph categoryId={category} size={22} /></span>
+                <h2>{CATEGORY_META[category].label}</h2>
+                <strong>{visibleItems.length}</strong>
               </div>
             )}
 
@@ -543,7 +535,7 @@ function App() {
               </div>
             ) : (
               <>
-                <div className="gallery-results-head"><h3>{query ? `“${query}”` : 'Tüm kayıtlar'}</h3><span>{visibleItems.length} screenshot</span></div>
+                {query && <div className="gallery-results-head"><h3>“{query}”</h3><span>{visibleItems.length} sonuç</span></div>}
                 {visibleItems.length > 0 ? (
                   <div className="library-grid gallery-items-grid">
                     {visibleItems.map((item) => <LibraryCard key={item.id} item={item} onOpen={() => setSelectedItem(item)} />)}

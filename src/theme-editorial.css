@@ -211,29 +211,16 @@ input:focus-visible {
 }
 
 /* Gallery and tools keep the same restrained, tactile language. */
-.gallery-intro {
-  border-bottom-width: 2px;
-}
-
-.gallery-intro h2,
-.gallery-detail-title h2 {
+.gallery-detail-bar h2 {
   color: #f4f1f0;
 }
 
-.gallery-intro p,
-.gallery-total span,
 .gallery-results-head span {
   color: #858087;
 }
 
-.gallery-total strong,
-.gallery-detail-title > strong {
+.gallery-detail-bar > strong {
   color: #d8d3d8;
-}
-
-.gallery-detail-intro {
-  border-top-width: 2px;
-  border-bottom-width: 2px;
 }
 
 .gallery-back {
